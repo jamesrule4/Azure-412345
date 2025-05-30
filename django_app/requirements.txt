@@ -1,0 +1,4 @@
+Django==5.0.1
+django-auth-ldap==4.6.0
+python-ldap==3.4.3
+gunicorn==21.2.0 
