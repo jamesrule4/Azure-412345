@@ -1,7 +1,7 @@
 variable "admin_ip_address" {
-  description = "The IP address allowed to access the domain controller via RDP"
+  description = "IP address allowed for RDP access"
   type        = string
-  sensitive   = true  # Mark as sensitive to prevent exposure in logs
+  sensitive   = true
 }
 
 variable "domain_controller_ip" {
@@ -20,4 +20,6 @@ variable "vnet_cidr" {
   description = "CIDR range for the virtual network"
   type        = string
   default     = "10.0.0.0/16"
-} 
+}
+
+# Add any other variables needed for the configuration 

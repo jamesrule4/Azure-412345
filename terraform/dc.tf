@@ -126,4 +126,41 @@ resource "azurerm_virtual_machine_extension" "initialize_and_install_ad" {
     "commandToExecute": "powershell -Command \"Get-Disk | Where-Object PartitionStyle -eq 'RAW' | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'AD_Data' -Confirm:$false; Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools; $password = ConvertTo-SecureString '${random_password.dc_admin.result}' -AsPlainText -Force; Install-ADDSForest -DomainName 'rule4.local' -SafeModeAdministratorPassword $password -Force -InstallDns\""
   }
   SETTINGS
+}
+
+# Custom script extension to configure AD groups and users
+resource "azurerm_virtual_machine_extension" "configure_ad_groups" {
+  name                 = "configure-ad-groups"
+  virtual_machine_id   = azurerm_windows_virtual_machine.dc.id
+  publisher            = "Microsoft.Compute"
+  type                 = "CustomScriptExtension"
+  type_handler_version = "1.10"
+
+  protected_settings = <<SETTINGS
+  {
+    "commandToExecute": "powershell -ExecutionPolicy Unrestricted -File dc_config.ps1",
+    "fileUris": ["${azurerm_storage_blob.dc_config.url}"]
+  }
+  SETTINGS
+
+  depends_on = [
+    azurerm_virtual_machine_extension.initialize_and_install_ad,
+    azurerm_storage_blob.dc_config
+  ]
+}
+
+# Storage blob for DC configuration script
+resource "azurerm_storage_blob" "dc_config" {
+  name                   = "dc_config.ps1"
+  storage_account_name   = azurerm_storage_account.diagnostics.name
+  storage_container_name = azurerm_storage_container.scripts.name
+  type                   = "Block"
+  source                 = "${path.module}/dc_config.ps1"
+}
+
+# Storage container for scripts
+resource "azurerm_storage_container" "scripts" {
+  name                  = "scripts"
+  storage_account_name  = azurerm_storage_account.diagnostics.name
+  container_access_type = "blob"
 } 
