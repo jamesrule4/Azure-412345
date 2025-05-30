@@ -1,6 +1,6 @@
 # Azure POC Environment
 
-This is my test environment for setting up a Windows-based Active Directory infrastructure in Azure. I'm building this to learn and test AD integration scenarios.
+This is my test environment for setting up a Windows-based Active Directory infrastructure in Azure with Django LDAP authentication.
 
 ## What's Included
 
@@ -9,12 +9,14 @@ This is my test environment for setting up a Windows-based Active Directory infr
 - Windows Server 2022 Domain Controller
 - Network Security Groups for access control
 - Storage account for VM diagnostics
+- Key Vault for secret management
 
 ### Features
 - Automated AD DS installation and configuration
 - LDAPS enabled by default
 - Separate data disk for AD data (best practice)
 - Basic security rules for RDP and LDAPS access
+- Django web application with AD authentication
 
 ## Components & Roles
 
@@ -98,43 +100,67 @@ terraform apply
 - Main Subnet: 10.0.1.0/24 (254 usable IPs)
 - DC IP: 10.0.1.10 (static assignment)
 
-## Security Notes
+## Required Azure Permissions
 
-- The domain admin password is stored in Terraform state
-- NSG rules are intentionally permissive for testing
-- Remember to clean up with `terraform destroy` when done
-
-## Project Status & Next Steps
-
-- [x] Get Contributor access to the Azure resource group
-- [x] Deploy network and NSG with Terraform
-- [x] Deploy Windows Server VM for Domain Controller
-- [x] Configure AD DS with PowerShell script
-- [x] Set up initial NSG rules
-- [ ] Deploy Ubuntu VM for Django app
-- [ ] Configure Django app with Bash script
-- [ ] Set up Key Vault for secrets
-- [ ] Configure LDAPS certificates
-- [ ] Add monitoring and backup
-- [ ] Lock down NSG rules to specific IPs
-
-## My Azure Roles
-
-These are the roles assigned to me in my Azure subscription:
+For this POC, the following Azure roles are required:
 
 ### Core Infrastructure Roles
 - **Network Contributor**: For managing VNet and NSG configurations
 - **Virtual Machine Contributor**: For creating and managing VMs
 - **Storage Account Contributor**: For managing diagnostics and VM storage
 
-### Access & Security Roles
-- **Key Vault Administrator**: For managing Key Vault and its policies
-- **Key Vault Reader**: For viewing Key Vault properties
-- **Key Vault Secrets User**: For reading secrets from Key Vault
+### Key Vault Roles (Critical)
+- **Key Vault Contributor**: For creating and managing Key Vaults
+- **Key Vault Administrator**: For managing Key Vault access policies
+- **Key Vault Secrets Officer**: For managing secrets within Key Vault
+
+### Identity & Access Roles
 - **Virtual Machine Administrator Login**: For admin RDP access to VMs
 - **Virtual Machine User Login**: For standard RDP access to VMs
+- **Managed Identity Operator**: For managing system-assigned identities
 
-### Automation Roles
-- **Automation Operator**: For managing automation runbooks and jobs
+## Project Status & Next Steps
+
+### Completed
+- [x] Get Contributor access to the Azure resource group
+- [x] Deploy network and NSG with Terraform
+- [x] Deploy Windows Server VM for Domain Controller
+- [x] Configure AD DS with PowerShell script
+- [x] Set up initial NSG rules
+- [x] Configure LDAPS certificates
+- [x] Set up Key Vault for secrets
+- [x] Create AD groups for Django authentication
+
+### In Progress
+- [ ] Configure DC to use Key Vault for admin password
+- [ ] Deploy Django application VM
+- [ ] Set up Django LDAP authentication
+- [ ] Test end-to-end authentication flow
+
+### Upcoming
+- [ ] Add monitoring and backup
+- [ ] Lock down NSG rules to specific IPs
+- [ ] Document deployment process
+- [ ] Create cleanup scripts
+
+## Security Notes
+
+- Secrets are stored in Azure Key Vault
+- NSG rules are intentionally permissive for testing
+- LDAPS is enabled and required for secure authentication
+- Remember to clean up with `terraform destroy` when done
+
+## TODO Items
+
+### Security
+- [ ] Restrict access to Rule4's egress IP only (Lumen network)
+  - Currently allowing wider access for development
+  - Will need to update NSG rules before presentation
+  - Required Rule4's IP address
+
+### Infrastructure
+- [ ] Complete Django app deployment
+- [ ] Test AD authentication
+- [ ] Document monthly cost estimates
 
 
