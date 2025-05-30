@@ -1,0 +1,7 @@
+# Copy this file to terraform.tfvars and update with my values
+admin_ip_address = "MY.IP.ADDRESS.HERE/32"  # Add /32 for single IP
+
+# These values can be left as defaults unless I need to change them
+domain_controller_ip = "10.0.1.10"
+subnet_cidr         = "10.0.1.0/24"
+vnet_cidr          = "10.0.0.0/16" 
