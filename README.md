@@ -1,166 +1,282 @@
-# Azure POC Environment
+# Azure Active Directory Integration POC
 
-This is my test environment for setting up a Windows-based Active Directory infrastructure in Azure with Django LDAP authentication.
+This project demonstrates a proof-of-concept environment for deploying isolated Windows Active Directory domains with Django web applications in Azure. The goal is to create a self-contained customer environment deployable on demand with minimal interaction—that can scale to thousands of identical environments.
 
-## What's Included
+## Quick Start
+```bash
+# Clone and setup
+git clone <repository-url>
+cd Azure-412345
 
-### Infrastructure
-- Virtual Network (10.0.0.0/16) with dedicated subnet for domain resources
-- Windows Server 2022 Domain Controller
-- Network Security Groups for access control
-- Storage account for VM diagnostics
-- Key Vault for secret management
+# Set up environment variables
+export AZURE_SUBSCRIPTION_ID="your-subscription-id"
+export AZURE_KEY_VAULT_URL="https://kvr4pocdc30ed2f6a96b645.vault.azure.net/"
 
-### Features
-- Automated AD DS installation and configuration
-- LDAPS enabled by default
-- Separate data disk for AD data (best practice)
-- Basic security rules for RDP and LDAPS access
-- Django web application with AD authentication
+# Deploy infrastructure
+cd terraform
+terraform init
+terraform apply
 
-## Components & Roles
+# Deploy Django application
+cd ../django_app
+./setup.sh
+```
+
+## Project Overview
+
+### Core Requirements
+1. Deploy a Windows domain and Active Directory Domain Controller (AD DC)
+2. Deploy a Django application that authenticates against that domain
+3. All configuration and deployment must be code/script-based (no GUI steps)
+4. Ensure secure communication between components
+5. Create a Django admin user named "fox"
+
+### Azure Permissions
+Current assigned roles in resource group:
+- Network Contributor
+- Virtual Machine Contributor
+- Key Vault Administrator
+- Key Vault Reader
+- Key Vault Secrets User
+- Virtual Machine Administrator Login
+- Storage Account Contributor
+- Key Vault Contributor
+
+## Current Architecture
 
 ### Infrastructure Components
-- **Virtual Network (VNet)**
-  - Main network space (10.0.0.0/16)
-  - Handles all internal communication
-  - Segmented into subnets for different workloads
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Azure VNet (10.0.0.0/16)                 │
+│   ┌──────────────────────────┐      ┌───────────────────────┐   │
+│   │    Domain Controller     │      │     Django Server     │   │
+│   │    Windows Server 2022   │      │     Ubuntu 22.04      │   │
+│   │    10.0.1.10            │      │     10.0.1.11         │   │
+│   │    - Active Directory    │◄────►│     - Django App      │   │
+│   │    - DNS Server         │      │     - LDAP Client     │   │
+│   └──────────────────────────┘      └───────────────────────┘   │
+│                    ▲                           ▲                 │
+│                    │                           │                 │
+│                    └───────────────┬───────────┘                 │
+│                                    │                             │
+│                            ┌───────▼──────┐                      │
+│                            │  Key Vault   │                      │
+│                            └─────────────┘                       │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-- **Subnet**
-  - Primary subnet (10.0.1.0/24)
-  - Hosts domain resources and VMs
-  - Protected by NSG rules
+### Deployed Resources
+- **Virtual Network**: 
+  - Name: vnet-poc
+  - Address Space: 10.0.0.0/16
+  - Subnet: 10.0.1.0/24
+- **Virtual Machines**:
+  - Domain Controller (vm-dc-poc):
+    - Size: B2s (2 vCPUs, 4GB RAM)
+    - OS: Windows Server 2022
+    - Disk: Premium SSD
+    - Static IP: 10.0.1.10
+  - Django Server (vm-django-poc):
+    - Size: B1s (1 vCPU, 2GB RAM)
+    - OS: Ubuntu 22.04 LTS
+    - Disk: Standard SSD
+    - Static IP: 10.0.1.11
+- **Network Security Groups**:
+  - nsg-poc (main)
+  - vm-dc-nsg (DC-specific)
+  - Rules configured:
 
-- **Network Security Group (NSG)**
-  - Controls inbound/outbound traffic
-  - Allows RDP access from my IP
-  - Permits LDAPS (636) within the subnet
-  - Blocks unwanted traffic
+#### Inbound Security Rules
+| Priority | Name                 | Port  | Protocol | Source             | Destination | Action |
+|----------|---------------------|-------|----------|-------------------|-------------|--------|
+| 110      | allow-ldap          | 636   | Tcp      | 10.0.1.0/24       | 10.0.1.10   | Allow  |
+| 120      | allow-rdp           | 3389  | Tcp      | 73.153.182.189/32 | 10.0.1.10   | Allow  |
+| 160      | allow-django-dev    | 8000  | Tcp      | 73.153.182.189/32 | 10.0.1.11   | Allow  |
+| 65000    | AllowVnetInBound    | Any   | Any      | VirtualNetwork    | VirtualNetwork| Allow |
+| 65001    | AllowAzureLoadBalancerInBound | Any | Any | AzureLoadBalancer | Any     | Allow  |
+| 65500    | DenyAllInBound      | Any   | Any      | Any               | Any         | Deny   |
 
-### Virtual Machines
-- **Domain Controller (Windows Server 2022)**
-  - Hosts Active Directory Domain Services
-  - Static IP: 10.0.1.10
-  - B2s size (2 vCPUs, 4GB RAM)
-  - Separate data disk for AD data
-  - System-managed identity for Azure integration
+#### Outbound Security Rules
+| Priority | Name                   | Port | Protocol | Source        | Destination | Action |
+|----------|------------------------|------|----------|---------------|-------------|--------|
+| 65000    | AllowVnetOutBound     | Any  | Any      | VirtualNetwork| VirtualNetwork| Allow |
+| 65001    | AllowInternetOutBound | Any  | Any      | Any          | Internet    | Allow  |
+| 65500    | DenyAllOutBound       | Any  | Any      | Any          | Any         | Deny   |
 
-### Storage
-- **Diagnostics Storage Account**
-  - Standard LRS tier
-  - Stores boot diagnostics
-  - VM performance metrics
-  - Random name for uniqueness
+- **Key Vault**: kvr4pocdc30ed2f6a96b645
+  - Secrets:
+    - django-secret-key
+    - admin-password
+    - ldap-bind-password
+  - Purpose: Secure secret management for infrastructure
+  - Access: Managed via RBAC and access policies
 
-### Active Directory
-- **AD DS Role**
-  - Primary domain controller
-  - DNS server for domain
-  - LDAP authentication
-  - Group Policy management
-  - User and computer management
+- **Storage Account**: diagdc30ed2f6a96b645
+  - Purpose: VM diagnostics
+  - Type: Standard LRS
+  - Used for: VM boot diagnostics and monitoring
 
-### Security Components
-- **NSG Rules**
-  - RDP (3389): Limited to specific IPs
-  - LDAPS (636): Internal subnet only
-  - Custom rules as needed
+## Project Status and Features
 
-### Terraform Components
-- **Provider Configuration**
-  - AzureRM provider
-  - Random provider for passwords
-  - State stored locally
+### Completed Features
+- [x] Basic infrastructure deployment
+- [x] Windows DC with AD DS
+- [x] Ubuntu VM with Python/Django
+- [x] Key Vault integration
+- [x] Network security groups
+- [x] Basic deployment scripts
 
-- **Resource Organization**
-  - Network (network.tf)
-  - Domain Controller (dc.tf)
-  - Storage (storage.tf)
-  - Outputs (outputs.tf)
+### In Progress
+- [ ] AD DC configuration automation
+- [ ] Django deployment automation
+- [ ] End-to-end authentication testing
+- [ ] Documentation improvements
 
-## Prerequisites
+### Planned Features
+- [ ] Monitoring setup
+- [ ] Backup configuration
+- [ ] Cost optimization
 
-- Azure subscription with contributor access
-- Terraform installed locally
-- Azure CLI installed and logged in
+## Development Workflow
+
+### Project Structure
+```
+.
+├── django_app/                 # Django web application
+│   ├── authentication/         # AD DC authentication app
+│   │   ├── management/        # Django management commands
+│   │   │   └── commands/      # Custom commands for AD DC setup
+│   │   └── templates/         # Authentication templates
+│   ├── config/                # Django settings & configuration
+│   │   ├── settings.py        # Main Django settings
+│   │   ├── test_settings.py   # Test environment settings
+│   │   ├── keyvault.py       # Azure Key Vault integration
+│   │   └── urls.py           # URL routing
+│   └── requirements.txt       # Python dependencies
+├── scripts/                   # Deployment scripts
+│   ├── linux/                # Ubuntu/Django VM scripts
+│   │   └── setup.sh          # Django environment setup
+│   └── windows/              # Windows DC scripts
+│       └── setup_ad.ps1      # AD DS configuration
+├── terraform/                # Infrastructure as Code
+│   ├── main.tf              # Main Terraform configuration
+│   ├── network.tf           # Network & NSG definitions
+│   ├── vm.tf                # VM configurations
+│   └── variables.tf         # Input variables
+└── README.md                # Project documentation
+```
+
+### Deployment Steps
+1. Infrastructure provisioning (Terraform)
+2. Domain Controller configuration (PowerShell)
+3. Django application deployment (Bash)
+4. Authentication setup and testing
+
+## Cost Estimation
+Monthly cost for a single environment:
+- B2s VM (DC): ~$30/month
+- B1s VM (Django): ~$15/month
+- Storage: ~$5/month
+- Key Vault: Free tier
+- Network: Minimal costs
+Total: ~$55/month
+
+## Next Steps
+1. Complete AD DC automation 
+2. Implement Django deployment automation
+3. Set up authentication flow
+4. Restrict external access to Rule4's egress IP
+5. Create deployment documentation
+
+## Security Considerations
+- All configuration and secrets managed via Azure Key Vault
+- LDAPS for secure authentication
+- NSG rules following least-privilege principle
+- Network isolation between environments
+
+## Authentication Flow
+
+1. User accesses Django application
+2. Django redirects to login page
+3. User enters AD credentials
+4. Django-LDAP authenticates against Windows DC:
+   - Verifies credentials via LDAPS (port 636)
+   - Checks group memberships
+   - Creates/updates local Django user
+5. Upon success:
+   - User session created
+   - User permissions synced from AD groups
+   - User redirected to home page
+6. For admin user "fox":
+   - Created automatically during deployment
+   - Granted Django superuser privileges
+   - Can access Django admin interface
 
 ## Getting Started
 
-1. Clone this repo
-2. Update your IP in `dc.tf` for RDP access
-3. Run:
-```bash
-terraform init
-terraform apply
-```
+### Prerequisites
+Before starting, ensure you have:
+- Azure CLI (latest version)
+- Terraform (>= 1.0.0)
+- Python (>= 3.9)
+- Git
 
-## Network Layout
+### Development Setup
+1. Clone and configure:
+   ```bash
+   # Clone repository
+   git clone <repository-url>
+   cd Azure-412345
 
-- VNet: 10.0.0.0/16 (65k addresses)
-- Main Subnet: 10.0.1.0/24 (254 usable IPs)
-- DC IP: 10.0.1.10 (static assignment)
+   # Configure Azure authentication
+   az login
+   az account set --subscription <subscription-id>
 
-## Required Azure Permissions
+   # Set required environment variables
+   export AZURE_SUBSCRIPTION_ID="your-subscription-id"
+   export AZURE_KEY_VAULT_URL="https://kvr4pocdc30ed2f6a96b645.vault.azure.net/"
+   ```
 
-For this POC, the following Azure roles are required:
+2. Infrastructure deployment:
 
-### Core Infrastructure Roles
-- **Network Contributor**: For managing VNet and NSG configurations
-- **Virtual Machine Contributor**: For creating and managing VMs
-- **Storage Account Contributor**: For managing diagnostics and VM storage
+   # Deploy Azure resources
+   cd terraform
+   terraform init
+   terraform plan    # Review changes
+   terraform apply   # Deploy infrastructure
+   ```
 
-### Key Vault Roles (Critical)
-- **Key Vault Contributor**: For creating and managing Key Vaults
-- **Key Vault Administrator**: For managing Key Vault access policies
-- **Key Vault Secrets Officer**: For managing secrets within Key Vault
+3. Application deployment:
+   ```bash
+   # Set up Django environment
+   cd ../django_app
+   python -m venv venv
+   source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+   pip install -r requirements.txt
+   ./setup.sh
+   ```
 
-### Identity & Access Roles
-- **Virtual Machine Administrator Login**: For admin RDP access to VMs
-- **Virtual Machine User Login**: For standard RDP access to VMs
-- **Managed Identity Operator**: For managing system-assigned identities
+### Verification Steps
+1. Check infrastructure:
+   ```bash
+   az vm list -g r4-onboarding-james -o table
+   az network vnet list -g r4-onboarding-james -o table
+   ```
 
-## Project Status & Next Steps
+2. Verify AD DC:
+   - RDP to DC (10.0.1.10)
+   - Check AD Users and Computers
+   - Verify LDAPS certificate
 
-### Completed
-- [x] Get Contributor access to the Azure resource group
-- [x] Deploy network and NSG with Terraform
-- [x] Deploy Windows Server VM for Domain Controller
-- [x] Configure AD DS with PowerShell script
-- [x] Set up initial NSG rules
-- [x] Configure LDAPS certificates
-- [x] Set up Key Vault for secrets
-- [x] Create AD groups for Django authentication
+3. Test Django application:
+   - Access Django admin: https://10.0.1.11/admin
+   - Try logging in with AD credentials
+   - Check LDAP group synchronization
 
-### In Progress
-- [ ] Configure DC to use Key Vault for admin password
-- [ ] Deploy Django application VM
-- [ ] Set up Django LDAP authentication
-- [ ] Test end-to-end authentication flow
+## References
 
-### Upcoming
-- [ ] Add monitoring and backup
-- [ ] Lock down NSG rules to specific IPs
-- [ ] Document deployment process
-- [ ] Create cleanup scripts
-
-## Security Notes
-
-- Secrets are stored in Azure Key Vault
-- NSG rules are intentionally permissive for testing
-- LDAPS is enabled and required for secure authentication
-- Remember to clean up with `terraform destroy` when done
-
-## TODO Items
-
-### Security
-- [ ] Restrict access to Rule4's egress IP only (Lumen network)
-  - Currently allowing wider access for development
-  - Will need to update NSG rules before presentation
-  - Required Rule4's IP address
-
-### Infrastructure
-- [ ] Complete Django app deployment
-- [ ] Test AD authentication
-- [ ] Document monthly cost estimates
+- [Azure Documentation](https://docs.microsoft.com/azure)
+- [Django-LDAP Documentation](https://django-auth-ldap.readthedocs.io/)
+- [Terraform Azure Provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
 
 

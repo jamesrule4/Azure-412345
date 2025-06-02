@@ -1,57 +1,75 @@
-# Main virtual network for the POC environment
+# Main virtual network
 resource "azurerm_virtual_network" "main" {
   name                = "vnet-poc"
-  resource_group_name = data.azurerm_resource_group.main.name
+  address_space       = ["10.0.0.0/16"]
   location            = data.azurerm_resource_group.main.location
-  address_space       = [var.vnet_cidr]
-
-  tags = {
-    environment = "poc"
-  }
+  resource_group_name = data.azurerm_resource_group.main.name
 }
 
-# Subnet for domain resources
+# Main subnet
 resource "azurerm_subnet" "main" {
   name                 = "snet-poc"
   resource_group_name  = data.azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = [var.subnet_cidr]
+  address_prefixes     = ["10.0.1.0/24"]
 }
 
-# Network security group for basic access control
+# Network security group
 resource "azurerm_network_security_group" "main" {
   name                = "nsg-poc"
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
-  # Secure LDAPS access from within subnet only
+  # Allow RDP from Rule4 IP only
   security_rule {
-    name                       = "allow-ldaps"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range         = "*"
-    destination_port_range    = "636"
-    source_address_prefix     = var.subnet_cidr
-    destination_address_prefix = var.domain_controller_ip
-  }
-
-  # RDP access from admin IP only
-  security_rule {
-    name                       = "allow-rdp"
-    priority                   = 120
+    name                       = "AllowRDPFromRule4"
+    priority                   = 100
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range         = "*"
     destination_port_range    = "3389"
-    source_address_prefix     = var.admin_ip_address
-    destination_address_prefix = var.domain_controller_ip
+    source_address_prefix     = "${var.rule4_ip}/32"  # Rule4 egress IP
+    destination_address_prefix = "10.0.1.10/32"      # Only to DC
   }
 
-  tags = {
-    environment = "poc"
+  # Allow SSH from Rule4 IP only
+  security_rule {
+    name                       = "AllowSSHFromRule4"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range         = "*"
+    destination_port_range    = "22"
+    source_address_prefix     = "${var.rule4_ip}/32"  # Rule4 egress IP
+    destination_address_prefix = "10.0.1.11/32"      # Only to Django VM
+  }
+
+  # Allow LDAPS between VMs
+  security_rule {
+    name                       = "AllowLDAPS"
+    priority                   = 120
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range         = "*"
+    destination_port_range    = "636"
+    source_address_prefix     = "10.0.1.0/24"
+    destination_address_prefix = "10.0.1.10/32"      # Only to DC
+  }
+
+  # Allow Django development server
+  security_rule {
+    name                       = "AllowDjangoDevServer"
+    priority                   = 130
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range         = "*"
+    destination_port_range    = "8000"
+    source_address_prefix     = "${var.rule4_ip}/32"  # Rule4 egress IP
+    destination_address_prefix = "10.0.1.11/32"      # Only to Django VM
   }
 }
 

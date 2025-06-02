@@ -1,6 +1,6 @@
 import os
 import ldap
-from django_auth_ldap.config import LDAPSearch, GroupOfNamesType
+from django_auth_ldap.config import LDAPSearch, GroupOfNamesType, ActiveDirectoryGroupType
 
 # Base Django settings
 SECRET_KEY = 'your-secret-key-here'  # TODO: Move to environment variable
@@ -56,9 +56,9 @@ DATABASES = {
 }
 
 # LDAP Authentication
-AUTH_LDAP_SERVER_URI = "ldaps://10.0.1.10"
-AUTH_LDAP_BIND_DN = "CN=fox,CN=Users,DC=rule4,DC=local"
-AUTH_LDAP_BIND_PASSWORD = "Rule4SecureP0C2025!"  # TODO: Get from Key Vault
+AUTH_LDAP_SERVER_URI = os.environ.get('LDAP_SERVER_URI', 'ldap://10.0.1.10')
+AUTH_LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN', 'CN=django,CN=Users,DC=rule4,DC=local')
+AUTH_LDAP_BIND_PASSWORD = os.environ.get('LDAP_BIND_PASSWORD', '')  # Empty for local dev
 
 AUTH_LDAP_USER_SEARCH = LDAPSearch(
     "DC=rule4,DC=local",

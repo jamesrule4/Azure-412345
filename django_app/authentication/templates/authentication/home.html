@@ -4,20 +4,7 @@
     <title>Home</title>
 </head>
 <body>
-    <h2>Welcome {{ user.username }}</h2>
-    
-    <h3>Your Groups:</h3>
-    <ul>
-    {% for group in groups %}
-        <li>{{ group.name }}</li>
-    {% empty %}
-        <li>No groups assigned</li>
-    {% endfor %}
-    </ul>
-
-    <form action="{% url 'logout' %}" method="post">
-        {% csrf_token %}
-        <button type="submit">Logout</button>
-    </form>
+    <h1>Welcome {{ user.username }}</h1>
+    <p>You are successfully logged in.</p>
 </body>
 </html> 

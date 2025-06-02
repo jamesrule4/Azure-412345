@@ -13,60 +13,14 @@ resource "azurerm_network_interface" "dc" {
   }
 }
 
-# Allow LDAPS access from within the subnet
-# Port 636 is for secure LDAP
-resource "azurerm_network_security_rule" "dc_ldaps" {
-  name                        = "allow-ldaps"
-  priority                    = 110
-  direction                   = "Inbound"
-  access                      = "Allow"
-  protocol                    = "Tcp"
-  source_port_range          = "*"
-  destination_port_range     = "636"
-  source_address_prefix      = "10.0.1.0/24"  # Only allow from within the subnet
-  destination_address_prefix = "10.0.1.10/32"  # DC's IP
-  resource_group_name         = data.azurerm_resource_group.main.name
-  network_security_group_name = azurerm_network_security_group.main.name
-}
-
-# Allow RDP access from my IP only
-resource "azurerm_network_security_rule" "dc_rdp" {
-  name                        = "allow-rdp"
-  priority                    = 120
-  direction                   = "Inbound"
-  access                      = "Allow"
-  protocol                    = "Tcp"
-  source_port_range          = "*"
-  destination_port_range     = "3389"
-  source_address_prefix      = var.admin_ip_address  # Using the variable instead of hardcoded IP
-  destination_address_prefix = "10.0.1.10/32"  # DC's IP
-  resource_group_name         = data.azurerm_resource_group.main.name
-  network_security_group_name = azurerm_network_security_group.main.name
-}
-
-resource "random_password" "dc_admin" {
-  length           = 20
-  special          = true
-  override_special = "!@#$%"
-  min_lower        = 1
-  min_upper        = 1
-  min_numeric      = 1
-  min_special      = 1
-}
-
 # Main domain controller VM
 resource "azurerm_windows_virtual_machine" "dc" {
   name                = "vm-dc-poc"
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
   size                = "Standard_B2s"  # Small size is fine for POC
-  admin_username      = "azureadmin"
+  admin_username      = "azureuser"
   admin_password      = random_password.dc_admin.result
-
-  # Add system-assigned managed identity
-  identity {
-    type = "SystemAssigned"
-  }
 
   network_interface_ids = [
     azurerm_network_interface.dc.id,
@@ -84,12 +38,8 @@ resource "azurerm_windows_virtual_machine" "dc" {
     version   = "latest"
   }
 
-  boot_diagnostics {
-    storage_account_uri = azurerm_storage_account.diagnostics.primary_blob_endpoint
-  }
-
-  tags = {
-    environment = "poc"
+  identity {
+    type = "SystemAssigned"
   }
 }
 
@@ -99,9 +49,9 @@ resource "azurerm_managed_disk" "ad_data" {
   name                 = "disk-dc-data"
   location             = data.azurerm_resource_group.main.location
   resource_group_name  = data.azurerm_resource_group.main.name
-  storage_account_type = "Premium_LRS"
+  storage_account_type = "Premium_LRS"  # Keep Premium storage for better performance
   create_option        = "Empty"
-  disk_size_gb        = 128
+  disk_size_gb        = 128  # Keep existing size
 }
 
 resource "azurerm_virtual_machine_data_disk_attachment" "ad_data" {
@@ -111,42 +61,18 @@ resource "azurerm_virtual_machine_data_disk_attachment" "ad_data" {
   caching           = "None"  # No caching for AD data disk
 }
 
-# Initialize disk and install AD DS in one extension
-# Combining these steps to avoid multiple extension issues
+# Initialize disk, install AD DS, and configure AD in one extension
 resource "azurerm_virtual_machine_extension" "initialize_and_install_ad" {
   name                 = "initialize-and-install-ad"
   virtual_machine_id   = azurerm_windows_virtual_machine.dc.id
   publisher            = "Microsoft.Compute"
   type                 = "CustomScriptExtension"
-  type_handler_version = "1.9"
+  type_handler_version = "1.10"
   depends_on          = [azurerm_virtual_machine_data_disk_attachment.ad_data]
 
-  protected_settings = <<SETTINGS
-  {
-    "commandToExecute": "powershell -Command \"Get-Disk | Where-Object PartitionStyle -eq 'RAW' | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'AD_Data' -Confirm:$false; Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools; $password = ConvertTo-SecureString '${random_password.dc_admin.result}' -AsPlainText -Force; Install-ADDSForest -DomainName 'rule4.local' -SafeModeAdministratorPassword $password -Force -InstallDns\""
-  }
-  SETTINGS
-}
-
-# Custom script extension to configure AD groups and users
-resource "azurerm_virtual_machine_extension" "configure_ad_groups" {
-  name                 = "configure-ad-groups"
-  virtual_machine_id   = azurerm_windows_virtual_machine.dc.id
-  publisher            = "Microsoft.Compute"
-  type                 = "CustomScriptExtension"
-  type_handler_version = "1.10"
-
-  protected_settings = <<SETTINGS
-  {
-    "commandToExecute": "powershell -ExecutionPolicy Unrestricted -File dc_config.ps1",
-    "fileUris": ["${azurerm_storage_blob.dc_config.url}"]
-  }
-  SETTINGS
-
-  depends_on = [
-    azurerm_virtual_machine_extension.initialize_and_install_ad,
-    azurerm_storage_blob.dc_config
-  ]
+  protected_settings = jsonencode({
+    "commandToExecute" = "powershell -Command \"Get-Disk | Where-Object PartitionStyle -eq 'RAW' | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'AD_Data' -Confirm:$false; Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools; $password = ConvertTo-SecureString '${random_password.dc_admin.result}' -AsPlainText -Force; Install-ADDSForest -DomainName 'rule4.local' -SafeModeAdministratorPassword $password -Force -InstallDns; Import-Module ActiveDirectory; New-ADOrganizationalUnit -Name 'Rule4' -Path 'DC=rule4,DC=local'; New-ADGroup -Name 'Django Users' -GroupScope Global -Path 'OU=Rule4,DC=rule4,DC=local'; New-ADUser -Name 'fox' -UserPrincipalName 'fox@rule4.local' -Path 'OU=Rule4,DC=rule4,DC=local' -AccountPassword $password -Enabled $true; Add-ADGroupMember -Identity 'Django Users' -Members 'fox'\""
+  })
 }
 
 # Storage blob for DC configuration script

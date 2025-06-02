@@ -2,13 +2,12 @@
 
 from django.contrib import admin
 from django.urls import path
-from django.contrib.auth import views as auth_views
-from authentication.views import home, test_ldap
+from authentication.views import login_view, logout_view, home, test_ldap
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', home, name='home'),
-    path('login/', auth_views.LoginView.as_view(template_name='authentication/login.html'), name='login'),
-    path('logout/', auth_views.LogoutView.as_view(next_page='login'), name='logout'),
-    path('test-ldap/', test_ldap, name='test_ldap'),
+    path('login/', login_view, name='login'),
+    path('logout/', logout_view, name='logout'),
+    path('test-ldap/', test_ldap, name='test-ldap'),
 ] 

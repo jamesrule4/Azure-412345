@@ -1,47 +1,69 @@
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.*
-crash.log
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# Django
 *.log
-*.tfvars
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-.terraform.lock.hcl
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
 
-# Local .terraform directories
-**/.terraform/*
-
-# .tfstate files
-*.tfstate
-*.tfstate.*
-
-# Crash log files
-crash.log
-crash.*.log
-
-# Sensitive variable files
-*.tfvars
-*.tfvars.json
-!terraform.tfvars.example
-
-# Override files
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-
-# CLI configuration files
-.terraformrc
-terraform.rc
-
-# Sensitive environment files
-.env
-*.env
-
-# Editor and OS files
-.DS_Store
+# IDE
+.idea/
 .vscode/
 *.swp
+*.swo
+.cursor/
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Azure
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+.env
+secrets.yaml
+
+# Compressed files
+*.gz
+*.tar
+*.zip
+
+# Test files
+**/test_*.py
+**/tests/
+pytest.ini
+.coverage
+htmlcov/
+
+

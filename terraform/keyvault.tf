@@ -1,3 +1,4 @@
+# Get current Azure client configuration
 data "azurerm_client_config" "current" {}
 
 resource "azurerm_key_vault" "main" {
@@ -7,7 +8,7 @@ resource "azurerm_key_vault" "main" {
   enabled_for_disk_encryption = true
   tenant_id                   = data.azurerm_client_config.current.tenant_id
   soft_delete_retention_days  = 7
-  purge_protection_enabled    = false  # Disabled for POC, enable for production
+  purge_protection_enabled    = false  # Disabled for POC
   sku_name                    = "standard"
 
   # Access policy for the current user/service principal
@@ -15,19 +16,8 @@ resource "azurerm_key_vault" "main" {
     tenant_id = data.azurerm_client_config.current.tenant_id
     object_id = data.azurerm_client_config.current.object_id
 
-    key_permissions = [
-      "Get", "List", "Create", "Delete", "Update",
-      "Import", "Backup", "Restore", "Recover"
-    ]
-
     secret_permissions = [
-      "Get", "List", "Set", "Delete", "Backup",
-      "Restore", "Recover"
-    ]
-
-    certificate_permissions = [
-      "Get", "List", "Create", "Delete", "Update",
-      "Import", "Backup", "Restore", "Recover"
+      "Get", "List", "Set", "Delete"
     ]
   }
 
@@ -47,21 +37,29 @@ resource "azurerm_key_vault_secret" "domain_admin_password" {
   }
 }
 
-# Separate access policy for the domain controller's managed identity
-# This needs to be created after the VM since it depends on the identity
+# Key Vault access policy for DC
 resource "azurerm_key_vault_access_policy" "dc" {
   key_vault_id = azurerm_key_vault.main.id
   tenant_id    = data.azurerm_client_config.current.tenant_id
-  # Only create this policy after the VM has been created and has an identity
-  object_id    = coalesce(try(azurerm_windows_virtual_machine.dc.identity[0].principal_id, null), "00000000-0000-0000-0000-000000000000")
+  object_id    = azurerm_windows_virtual_machine.dc.identity[0].principal_id
 
   secret_permissions = [
-    "Get", "List"
+    "Get",
+    "List"
   ]
+}
 
-  depends_on = [
-    azurerm_windows_virtual_machine.dc,
-    azurerm_key_vault.main
+# Key Vault access policy for Django VMs
+resource "azurerm_key_vault_access_policy" "django" {
+  count = var.django_instance_count
+
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = azurerm_linux_virtual_machine.django[count.index].identity[0].principal_id
+
+  secret_permissions = [
+    "Get",
+    "List"
   ]
 }
 
