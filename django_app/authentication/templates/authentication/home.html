@@ -4,10 +4,7 @@
     <title>Home</title>
 </head>
 <body>
-    <h1>Welcome {{ username }}</h1>
-    <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit">Logout</button>
-    </form>
+    <h1>Welcome {{ user.username }}</h1>
+    <p>You are successfully logged in.</p>
 </body>
 </html> 

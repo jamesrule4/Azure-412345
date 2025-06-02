@@ -1,28 +1,23 @@
 """
-Django settings for the project.
+Django settings for Rule4 POC project.
+This module contains all Django and LDAP authentication settings.
+The settings are designed to work with Azure Key Vault for secret management.
 """
 
 import os
-import ldap
 from pathlib import Path
-from dotenv import load_dotenv
-from django_auth_ldap.config import LDAPSearch, GroupOfNamesType
-
-# Load environment variables
-load_dotenv()
+import ldap
+from django_auth_ldap.config import LDAPSearch, GroupOfNamesType, ActiveDirectoryGroupType
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-default-key-change-me')
+# Base Django settings - Retrieved from Key Vault in production
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-only-local-key')
+DEBUG = False
+ALLOWED_HOSTS = ['10.0.1.11']  # Django VM IP address
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() == 'true'
-
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-
-# Application definition
+# Application definition - Standard Django apps
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -30,12 +25,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'authentication',
 ]
 
+# Standard Django middleware for security and session management
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -44,12 +38,13 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'config.urls'
+ROOT_URLCONF = 'django_app.urls'
 
+# Template configuration with default Django backend
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -62,91 +57,81 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
+WSGI_APPLICATION = 'django_app.wsgi.application'
 
-# Database
+# Database configuration - Using SQLite for simplicity
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
     }
 }
 
-# Logging configuration
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'level': 'DEBUG',
-        },
-    },
-    'loggers': {
-        'django_auth_ldap': {
-            'level': 'DEBUG',
-            'handlers': ['console'],
-        },
-    }
-}
+# LDAP Authentication settings
+# All sensitive values are retrieved from Azure Key Vault in production
+AUTH_LDAP_SERVER_URI = os.environ.get('LDAP_SERVER_URI', 'ldap://10.0.1.10')  # Domain Controller IP
+AUTH_LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN', 'CN=django,CN=Users,DC=rule4,DC=local')
+AUTH_LDAP_BIND_PASSWORD = os.environ.get('LDAP_BIND_PASSWORD', '')  # Retrieved from Key Vault
 
-# LDAP Authentication
-AUTH_LDAP_SERVER_URI = f"ldaps://{os.getenv('DC_IP', '10.0.1.10')}"
-
-# TLS Settings for LDAPS
-AUTH_LDAP_START_TLS = False  # Not needed with LDAPS
-AUTH_LDAP_GLOBAL_OPTIONS = {
-    ldap.OPT_X_TLS_REQUIRE_CERT: ldap.OPT_X_TLS_NEVER,
-    ldap.OPT_REFERRALS: 0,  # Required for Windows AD
-    ldap.OPT_PROTOCOL_VERSION: 3,  # Use LDAP v3
-    ldap.OPT_X_TLS_NEWCTX: 0,  # Required for TLS
-    ldap.OPT_TIMEOUT: 30,  # Connection timeout in seconds
-    ldap.OPT_NETWORK_TIMEOUT: 10,  # Network timeout in seconds
-}
-
-# The following DN will be used to bind to the LDAP server
-AUTH_LDAP_BIND_DN = "CN=Administrator,CN=Users,DC=internal,DC=domain"
-AUTH_LDAP_BIND_PASSWORD = os.getenv('LDAP_BIND_PASSWORD', '')
-
-# User search
+# LDAP user search configuration
 AUTH_LDAP_USER_SEARCH = LDAPSearch(
-    "CN=Users,DC=internal,DC=domain",
-    ldap.SCOPE_SUBTREE,
-    "(sAMAccountName=%(user)s)"
+    "DC=rule4,DC=local",  # Base DN for user search
+    ldap.SCOPE_SUBTREE,   # Search entire subtree
+    "(sAMAccountName=%(user)s)",  # Filter by Windows username
 )
 
-# Group search
+# LDAP group search configuration
 AUTH_LDAP_GROUP_SEARCH = LDAPSearch(
-    "CN=Users,DC=internal,DC=domain",
+    "DC=rule4,DC=local",
     ldap.SCOPE_SUBTREE,
-    "(objectClass=group)"
+    "(objectClass=group)",
 )
 
-# Group type
 AUTH_LDAP_GROUP_TYPE = GroupOfNamesType()
 
-# User attributes
+# Map LDAP attributes to Django user attributes
 AUTH_LDAP_USER_ATTR_MAP = {
-    'first_name': 'givenName',
-    'last_name': 'sn',
-    'email': 'mail',
+    "first_name": "givenName",
+    "last_name": "sn",
+    "email": "mail",
 }
 
-# Group attributes
+# Map LDAP groups to Django permissions
 AUTH_LDAP_USER_FLAGS_BY_GROUP = {
-    "is_staff": "CN=DjangoStaff,CN=Users,DC=internal,DC=domain",
-    "is_superuser": "CN=DjangoAdmins,CN=Users,DC=internal,DC=domain"
+    "is_staff": "CN=DjangoStaff,CN=Users,DC=rule4,DC=local",
+    "is_superuser": "CN=DjangoAdmins,CN=Users,DC=rule4,DC=local",
 }
 
-# Cache settings
-AUTH_LDAP_CACHE_GROUPS = True
-AUTH_LDAP_GROUP_CACHE_TIMEOUT = 300  # 5 minutes
-
-# Authentication backends
+# Authentication backend configuration
+# LDAP is primary, with Django model backend as fallback
 AUTHENTICATION_BACKENDS = [
     'django_auth_ldap.backend.LDAPBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
+
+# Static files configuration
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+
+# Security settings
+SECURE_SSL_REDIRECT = False  # SSL termination happens at Nginx
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+X_FRAME_OPTIONS = 'DENY'  # Prevent clickjacking
+
+# Internationalization
+LANGUAGE_CODE = 'en-us'
+TIME_ZONE = 'UTC'
+USE_I18N = True
+USE_TZ = True
+
+# Default primary key field type
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Login settings
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/home/'
+LOGOUT_REDIRECT_URL = '/login/'
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -162,21 +147,4 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
-]
-
-# Internationalization
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-USE_I18N = True
-USE_TZ = True
-
-# Static files
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-# Default primary key field type
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# Login settings
-LOGIN_URL = 'login'
-LOGIN_REDIRECT_URL = 'home' 
+] 
