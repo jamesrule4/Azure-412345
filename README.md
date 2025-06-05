@@ -149,22 +149,45 @@ Current assigned roles in resource group:
 │   │   └── templates/         # Authentication templates
 │   ├── config/                # Django settings & configuration
 │   │   ├── settings.py        # Main Django settings
-│   │   ├── test_settings.py   # Test environment settings
 │   │   ├── keyvault.py       # Azure Key Vault integration
 │   │   └── urls.py           # URL routing
 │   └── requirements.txt       # Python dependencies
 ├── scripts/                   # Deployment scripts
 │   ├── linux/                # Ubuntu/Django VM scripts
-│   │   └── setup.sh          # Django environment setup
-│   └── windows/              # Windows DC scripts
-│       └── setup_ad.ps1      # AD DS configuration
+│   │   └── deploy.sh         # Django deployment script
+│   ├── windows/              # Windows DC scripts
+│   │   └── configure-ad.ps1  # AD DS configuration script
+│   └── create_environment.sh # Environment creation script
 ├── terraform/                # Infrastructure as Code
 │   ├── main.tf              # Main Terraform configuration
 │   ├── network.tf           # Network & NSG definitions
-│   ├── vm.tf                # VM configurations
-│   └── variables.tf         # Input variables
+│   ├── dc.tf               # Domain Controller configuration
+│   ├── django_vm.tf        # Django VM configuration
+│   ├── keyvault.tf         # Key Vault configuration
+│   ├── storage.tf          # Storage account configuration
+│   ├── variables.tf         # Input variables
+│   ├── locals.tf            # Local variables for workspaces
+│   └── outputs.tf           # Output definitions
 └── README.md                # Project documentation
 ```
+
+### Workspace-Based Deployment
+Each environment is managed through Terraform workspaces:
+```bash
+# Create and switch to a new environment
+terraform workspace new poc2
+
+# Deploy the environment
+terraform apply
+
+# List available environments
+terraform workspace list
+
+# Switch between environments
+terraform workspace select poc1
+```
+
+Each workspace maintains its own state and creates isolated resources with unique names based on the workspace name (e.g., vm-dc-poc2, nic-django-poc2).
 
 ### Deployment Steps
 1. Infrastructure provisioning (Terraform)
@@ -278,5 +301,43 @@ Before starting, ensure you have:
 - [Azure Documentation](https://docs.microsoft.com/azure)
 - [Django-LDAP Documentation](https://django-auth-ldap.readthedocs.io/)
 - [Terraform Azure Provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
+
+## Self-Contained Environments
+
+### Overview
+The project supports deploying multiple isolated environments, each containing:
+- A dedicated Domain Controller (DC)
+- A Django application server
+- Isolated networking
+- Environment-specific secrets
+
+### Deployment Pattern
+Each environment follows this pattern:
+```
+Environment N:
+├── Network (vnet-pocN)
+│   └── Subnet (10.N.1.0/24)
+├── Domain Controller (vm-dc-pocN)
+└── Django Server (vm-django-pocN)
+```
+
+### Resource Naming
+Resources are numbered sequentially (poc1, poc2, etc.):
+- Virtual Machines: vm-dc-poc1, vm-django-poc1
+- Network Interfaces: nic-dc-poc1, nic-django-poc1
+- Network Security Groups: nsg-poc1
+- Virtual Networks: vnet-poc1
+
+### Network Isolation
+Each environment gets its own address space:
+- Environment 1: 10.1.0.0/16
+- Environment 2: 10.2.0.0/16
+- Environment N: 10.N.0.0/16
+
+### Secret Management
+All secrets are stored in the central Key Vault with environment-specific prefixes:
+- django-secret-key-1, django-secret-key-2
+- admin-password-1, admin-password-2
+- ldap-bind-password-1, ldap-bind-password-2
 
 
