@@ -1,5 +1,16 @@
-# Copy this file to terraform.tfvars and update with my values
-admin_ip_address = "MY.IP.ADDRESS.HERE/32"  # Add /32 for single IP
+# Example terraform.tfvars file
+# Copy this to terraform.tfvars and fill in your values
+
+admin_ip_address = "YOUR.PUBLIC.IP.ADDRESS"  # Your public IP for RDP/SSH access
+admin_password = "YourComplexPassword123!"    # Must meet Azure complexity requirements
+environment_number = 1                        # Environment number (1, 2, etc.)
+rule4_ip = "65.140.106.10"                   # Rule4's egress IP
+
+# Optional: Override computed network ranges if needed
+# vnet_cidr = "10.1.0.0/16"                  # Will be computed as 10.{environment_number}.0.0/16
+# subnet_cidr = "10.1.1.0/24"                # Will be computed as 10.{environment_number}.1.0/24
+# domain_controller_ip = "10.1.1.10"         # Will be computed as 10.{environment_number}.1.10
+# django_instance_ips = ["10.1.1.11", "10.1.1.12"]  # Will be computed based on environment_number
 
 # These values can be left as defaults unless I need to change them
 domain_controller_ip = "10.0.1.10"
