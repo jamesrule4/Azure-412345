@@ -1,43 +1,40 @@
-# Get current Azure client configuration
+# Get current client configuration from Azure
 data "azurerm_client_config" "current" {}
 
+# Create Key Vault
 resource "azurerm_key_vault" "main" {
-  name                        = "kvr4poc${lower(random_id.storage_account.hex)}"
-  location                    = data.azurerm_resource_group.main.location
-  resource_group_name         = data.azurerm_resource_group.main.name
+  name                = "kv-${local.resource_suffix}"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+  tenant_id          = data.azurerm_client_config.current.tenant_id
+  sku_name           = "standard"
+
   enabled_for_disk_encryption = true
-  tenant_id                   = data.azurerm_client_config.current.tenant_id
-  soft_delete_retention_days  = 7
-  purge_protection_enabled    = false  # Disabled for POC
-  sku_name                    = "standard"
+  purge_protection_enabled    = false
 
-  # Access policy for the current user/service principal
-  access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = data.azurerm_client_config.current.object_id
-
-    secret_permissions = [
-      "Get", "List", "Set", "Delete"
-    ]
-  }
-
-  tags = {
-    environment = "poc"
+  network_acls {
+    bypass         = "AzureServices"
+    default_action = "Allow"
   }
 }
 
-# Store the domain admin password in Key Vault
-resource "azurerm_key_vault_secret" "domain_admin_password" {
-  name         = "domain-admin-password"
-  value        = random_password.dc_admin.result
+# Grant access to the current user
+resource "azurerm_key_vault_access_policy" "current_user" {
   key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
 
-  tags = {
-    environment = "poc"
-  }
+  secret_permissions = [
+    "Get",
+    "List",
+    "Set",
+    "Delete",
+    "Purge",
+    "Recover"
+  ]
 }
 
-# Key Vault access policy for DC
+# Grant access to the DC VM
 resource "azurerm_key_vault_access_policy" "dc" {
   key_vault_id = azurerm_key_vault.main.id
   tenant_id    = data.azurerm_client_config.current.tenant_id
@@ -49,13 +46,11 @@ resource "azurerm_key_vault_access_policy" "dc" {
   ]
 }
 
-# Key Vault access policy for Django VMs
+# Grant access to the Django VM
 resource "azurerm_key_vault_access_policy" "django" {
-  count = var.django_instance_count
-
   key_vault_id = azurerm_key_vault.main.id
   tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = azurerm_linux_virtual_machine.django[count.index].identity[0].principal_id
+  object_id    = azurerm_linux_virtual_machine.django.identity[0].principal_id
 
   secret_permissions = [
     "Get",
@@ -63,7 +58,57 @@ resource "azurerm_key_vault_access_policy" "django" {
   ]
 }
 
-# Output the Key Vault name for reference
-output "key_vault_name" {
-  value = azurerm_key_vault.main.name
+# Generate a random password for Django admin
+resource "random_password" "django_admin" {
+  length  = 20
+  special = true
+}
+
+# Store secrets
+resource "azurerm_key_vault_secret" "domain_admin_password" {
+  name         = "domain-admin-password-${local.env_number}"
+  value        = random_password.dc_admin.result
+  key_vault_id = azurerm_key_vault.main.id
+
+  tags = {
+    environment = terraform.workspace
+  }
+
+  depends_on = [azurerm_key_vault_access_policy.current_user]
+}
+
+resource "azurerm_key_vault_secret" "django_admin_password" {
+  name         = "django-admin-password-${local.env_number}"
+  value        = random_password.django_admin.result
+  key_vault_id = azurerm_key_vault.main.id
+
+  tags = {
+    environment = terraform.workspace
+  }
+
+  depends_on = [azurerm_key_vault_access_policy.current_user]
+}
+
+resource "azurerm_key_vault_secret" "django_secret_key" {
+  name         = "django-secret-key-${local.env_number}"
+  value        = random_password.django_admin.result
+  key_vault_id = azurerm_key_vault.main.id
+
+  tags = {
+    environment = terraform.workspace
+  }
+
+  depends_on = [azurerm_key_vault_access_policy.current_user]
+}
+
+resource "azurerm_key_vault_secret" "ldap_bind_password" {
+  name         = "ldap-bind-password-${local.env_number}"
+  value        = random_password.dc_admin.result
+  key_vault_id = azurerm_key_vault.main.id
+
+  tags = {
+    environment = terraform.workspace
+  }
+
+  depends_on = [azurerm_key_vault_access_policy.current_user]
 } 

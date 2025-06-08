@@ -1,7 +1,6 @@
-# Network interface for Django VMs
+# Network interface for Django VM
 resource "azurerm_network_interface" "django" {
-  count               = var.django_instance_count
-  name                = "nic-django-poc-${count.index + 1}"
+  name                = "nic-django-${local.resource_suffix}"
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
@@ -9,25 +8,24 @@ resource "azurerm_network_interface" "django" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.main.id
     private_ip_address_allocation = "Static"
-    private_ip_address           = var.django_instance_ips[count.index]
+    private_ip_address           = local.django_instance_ips[0]  # Using first IP
   }
 }
 
-# Django application VMs
+# Django application VM
 resource "azurerm_linux_virtual_machine" "django" {
-  count               = var.django_instance_count
-  name                = "vm-django-poc-${count.index + 1}"
+  name                = "vm-django-${local.resource_suffix}"
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
   size                = "Standard_B1s"  # Small size is fine for POC
-  admin_username      = "azureuser"
+  admin_username      = var.admin_username
   
   network_interface_ids = [
-    azurerm_network_interface.django[count.index].id,
+    azurerm_network_interface.django.id,
   ]
 
   admin_ssh_key {
-    username   = "azureuser"
+    username   = var.admin_username
     public_key = file("~/.ssh/id_rsa.pub")  # Make sure this exists
   }
 
@@ -50,29 +48,29 @@ resource "azurerm_linux_virtual_machine" "django" {
 
 # Configure NSG rules for Django VMs
 resource "azurerm_network_security_rule" "django_http" {
-  name                        = "allow-http"
+  name                        = "allow-http-${local.resource_suffix}"
   priority                    = 150
   direction                   = "Inbound"
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range          = "*"
   destination_port_range     = "80"
-  source_address_prefix      = var.rule4_ip
-  destination_address_prefixes = var.django_instance_ips
+  source_address_prefix      = "${var.rule4_ip}/32"
+  destination_address_prefixes = local.django_instance_ips
   resource_group_name         = data.azurerm_resource_group.main.name
   network_security_group_name = azurerm_network_security_group.main.name
 }
 
 resource "azurerm_network_security_rule" "django_ssh" {
-  name                        = "allow-ssh"
+  name                        = "allow-ssh-${local.resource_suffix}"
   priority                    = 170
   direction                   = "Inbound"
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range          = "*"
   destination_port_range     = "22"
-  source_address_prefix      = var.rule4_ip
-  destination_address_prefixes = var.django_instance_ips
+  source_address_prefix      = "${var.rule4_ip}/32"
+  destination_address_prefixes = local.django_instance_ips
   resource_group_name         = data.azurerm_resource_group.main.name
   network_security_group_name = azurerm_network_security_group.main.name
 } 
