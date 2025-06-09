@@ -58,34 +58,53 @@ echo ""
 echo "=== Phase 2: VM Readiness Check ==="
 echo "Waiting for VMs to be fully ready..."
 
-# Wait for Django VM SSH
+# Wait for Django VM SSH (using password auth, not SSH keys)
 echo "Checking Django VM SSH connectivity..."
+echo "Testing SSH to: $DJANGO_IP"
 for i in {1..30}; do
-    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa azureadmin@$DJANGO_IP "echo 'SSH Ready'" 2>/dev/null; then
+    if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP "echo 'SSH Ready'" 2>/dev/null; then
         echo "Django VM SSH is ready"
+        SSH_READY=true
         break
     fi
-    echo "Attempt $i/30: Django VM not ready yet..."
+    echo "Attempt $i/30: Django VM not ready yet... (IP: $DJANGO_IP)"
     sleep 10
 done
 
+# Check if SSH failed completely
+if [ "$SSH_READY" != "true" ]; then
+    echo "WARNING: SSH connectivity check failed after 30 attempts"
+    echo "Attempting to continue deployment - VM may still be initializing"
+    echo "You can manually verify SSH with: ssh azureadmin@$DJANGO_IP"
+fi
+
 # Wait for Domain Controller RDP/WinRM
 echo "Checking Domain Controller readiness..."
+echo "Testing RDP to: $DC_IP"
 for i in {1..30}; do
     if nc -z $DC_IP 3389 2>/dev/null; then
         echo "Domain Controller RDP is ready"
+        RDP_READY=true
         break
     fi
-    echo "Attempt $i/30: Domain Controller not ready yet..."
+    echo "Attempt $i/30: Domain Controller not ready yet... (IP: $DC_IP)"
     sleep 10
 done
+
+# Check if RDP failed completely
+if [ "$RDP_READY" != "true" ]; then
+    echo "WARNING: RDP connectivity check failed after 30 attempts"
+    echo "Attempting to continue deployment - VM may still be initializing"
+    echo "You can manually verify RDP to: $DC_IP"
+fi
 
 # Step 3: Install Docker on Django VM
 echo ""
 echo "=== Phase 3: Docker Installation ==="
 echo "Installing Docker on Django VM..."
 
-ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa azureadmin@$DJANGO_IP << 'DOCKER_INSTALL'
+# Use consistent IP variable and remove SSH key reference
+ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP << 'DOCKER_INSTALL'
 # Update system
 sudo apt-get update
 
@@ -113,15 +132,15 @@ echo "=== Phase 4: Django Application Deployment ==="
 echo "Deploying Django application with Docker..."
 
 # Create Django app directory structure on VM
-ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa azureadmin@$DJANGO_IP "mkdir -p /home/azureadmin/django_app"
+ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP "mkdir -p /home/azureadmin/django_app"
 
-# Copy Django files to VM
+# Copy Django files to VM (remove SSH key reference)
 echo "Copying Django application files..."
-scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r django_app/* azureadmin@$DJANGO_IP:/home/azureadmin/django_app/
+scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -r django_app/* azureadmin@$DJANGO_IP:/home/azureadmin/django_app/
 
-# Set up environment variables for Docker Compose (no Key Vault dependency)
+# Set up environment variables for Docker Compose (use consistent IP variables)
 echo "Setting up environment variables..."
-ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa azureadmin@$DJANGO_IP << ENV_SETUP
+ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP << ENV_SETUP
 cd /home/azureadmin/django_app
 
 # Create .env file with dynamic IPs and hardcoded secrets
@@ -135,13 +154,13 @@ echo "Environment file created with dynamic IPs for environment $ENV_NUM"
 ENV_SETUP
 
 # Build and start Django container
-echo "Building and starting minimal Django container..."
-ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa azureadmin@$DJANGO_IP << 'DOCKER_DEPLOY'
+echo "Building and starting Django container..."
+ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP << 'DOCKER_DEPLOY'
 cd /home/azureadmin/django_app
 
 # Initialize Django (run migrations and create superuser)
 echo "Initializing Django..."
-python init_django.py
+python3 init_django.py || echo "Django initialization failed - will try in container"
 
 # Build and start the container 
 docker-compose up -d --build
@@ -154,7 +173,7 @@ docker-compose ps
 echo "Container logs:"
 docker-compose logs --tail=20
 
-echo "Minimal Django container deployment completed"
+echo "Django container deployment completed"
 DOCKER_DEPLOY
 
 # Step 5: Install Active Directory (Now that everything is ready)
@@ -217,7 +236,7 @@ if curl -f http://$DJANGO_IP:8000/ > /dev/null 2>&1; then
 else
     echo "Django application is not responding yet"
     echo "Checking container status..."
-    ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa azureadmin@$DJANGO_IP "cd /home/azureadmin/django_app && docker-compose logs"
+    ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP "cd /home/azureadmin/django_app && docker-compose logs"
 fi
 
 # Cleanup
