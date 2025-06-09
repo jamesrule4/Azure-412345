@@ -65,7 +65,7 @@ try {
     Add-ADGroupMember -Identity 'DjangoStaff' -Members 'adminuser'
     
     Write-Output ""
-    Write-Output "✅ Django LDAP users and groups created successfully!"
+    Write-Output "Django LDAP users and groups created successfully!"
     Write-Output ""
     Write-Output "Created Users:"
     Write-Output "   django (service account) - Password from Key Vault"

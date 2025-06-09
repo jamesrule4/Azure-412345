@@ -143,7 +143,7 @@ cd /home/azureadmin/django_app
 echo "Initializing Django..."
 python init_django.py
 
-# Build and start the container (much faster now)
+# Build and start the container 
 docker-compose up -d --build
 
 # Wait for container to be ready
