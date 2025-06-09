@@ -7,6 +7,18 @@ output "domain_controller_private_ip" {
   value = azurerm_windows_virtual_machine.dc.private_ip_address
 }
 
+output "domain_controller_public_ip" {
+  value = azurerm_public_ip.dc.ip_address
+}
+
+output "django_vm_public_ip" {
+  value = azurerm_public_ip.django.ip_address
+}
+
+output "django_vm_private_ip" {
+  value = azurerm_linux_virtual_machine.django.private_ip_address
+}
+
 output "virtual_network_name" {
   value = azurerm_virtual_network.main.name
 }

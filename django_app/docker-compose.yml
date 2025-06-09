@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  django:
+    build: .
+    container_name: rule4-django-minimal
+    ports:
+      - "8000:8000"
+    environment:
+      # Hardcoded secrets - no Key Vault dependency
+      - DJANGO_SECRET_KEY=hardcoded-secret-key-for-poc-testing-only-2025
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # LDAP Configuration - will be set dynamically by deployment script
+      - LDAP_SERVER_URI=${LDAP_SERVER_URI:-}
+      - LDAP_BIND_DN=CN=django,CN=Users,DC=rule4,DC=local
+      - LDAP_BIND_PASSWORD=hardcoded-ldap-password-for-poc
+    volumes:
+      - ./static:/app/static
+    restart: unless-stopped 

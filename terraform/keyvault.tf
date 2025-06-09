@@ -1,114 +1,109 @@
-# Get current client configuration from Azure
+# Get current client configuration
 data "azurerm_client_config" "current" {}
 
-# Create Key Vault
+# Key Vault
 resource "azurerm_key_vault" "main" {
-  name                = "kv-${local.resource_suffix}"
+  name                = "kv-${terraform.workspace}-${random_id.storage_account.hex}"
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
-  tenant_id          = data.azurerm_client_config.current.tenant_id
-  sku_name           = "standard"
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  sku_name            = "standard"
 
-  enabled_for_disk_encryption = true
-  purge_protection_enabled    = false
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
 
-  network_acls {
-    bypass         = "AzureServices"
-    default_action = "Allow"
+    key_permissions = [
+      "Get", "List", "Create", "Delete", "Update", "Recover", "Purge"
+    ]
+
+    secret_permissions = [
+      "Get", "List", "Set", "Delete", "Recover", "Purge"
+    ]
+
+    storage_permissions = [
+      "Get", "List", "Set", "Delete", "Update", "Recover", "Purge"
+    ]
+  }
+
+  # Access policy for Django VM system-assigned identity
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = azurerm_linux_virtual_machine.django.identity[0].principal_id
+
+    secret_permissions = [
+      "Get", "List"
+    ]
+  }
+
+  tags = {
+    Environment = terraform.workspace
   }
 }
 
-# Grant access to the current user
-resource "azurerm_key_vault_access_policy" "current_user" {
-  key_vault_id = azurerm_key_vault.main.id
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = data.azurerm_client_config.current.object_id
-
-  secret_permissions = [
-    "Get",
-    "List",
-    "Set",
-    "Delete",
-    "Purge",
-    "Recover"
-  ]
-}
-
-# Grant access to the DC VM
-resource "azurerm_key_vault_access_policy" "dc" {
-  key_vault_id = azurerm_key_vault.main.id
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = azurerm_windows_virtual_machine.dc.identity[0].principal_id
-
-  secret_permissions = [
-    "Get",
-    "List"
-  ]
-}
-
-# Grant access to the Django VM
-resource "azurerm_key_vault_access_policy" "django" {
-  key_vault_id = azurerm_key_vault.main.id
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = azurerm_linux_virtual_machine.django.identity[0].principal_id
-
-  secret_permissions = [
-    "Get",
-    "List"
-  ]
-}
-
-# Generate a random password for Django admin
+# Generate passwords for AD services only
 resource "random_password" "django_admin" {
-  length  = 20
+  length           = 16
+  special          = true
+  override_special = "!@#$%&*"
+  min_upper        = 2
+  min_lower        = 2
+  min_numeric      = 2
+  min_special      = 2
+}
+
+resource "random_password" "django_secret_key" {
+  length  = 50
   special = true
 }
 
-# Store secrets
+resource "random_password" "ldap_bind_password" {
+  length           = 16
+  special          = true
+  override_special = "!@#$%&*"
+  min_upper        = 2
+  min_lower        = 2
+  min_numeric      = 2
+  min_special      = 2
+}
+
+# Key Vault Secrets
 resource "azurerm_key_vault_secret" "domain_admin_password" {
-  name         = "domain-admin-password-${local.env_number}"
+  name         = "domain-admin-password-${terraform.workspace}"
   value        = random_password.dc_admin.result
   key_vault_id = azurerm_key_vault.main.id
-
+  
   tags = {
-    environment = terraform.workspace
+    Environment = terraform.workspace
   }
-
-  depends_on = [azurerm_key_vault_access_policy.current_user]
 }
 
 resource "azurerm_key_vault_secret" "django_admin_password" {
-  name         = "django-admin-password-${local.env_number}"
+  name         = "django-admin-password-${terraform.workspace}"
   value        = random_password.django_admin.result
   key_vault_id = azurerm_key_vault.main.id
-
+  
   tags = {
-    environment = terraform.workspace
+    Environment = terraform.workspace
   }
-
-  depends_on = [azurerm_key_vault_access_policy.current_user]
 }
 
 resource "azurerm_key_vault_secret" "django_secret_key" {
-  name         = "django-secret-key-${local.env_number}"
-  value        = random_password.django_admin.result
+  name         = "django-secret-key-${terraform.workspace}"
+  value        = random_password.django_secret_key.result
   key_vault_id = azurerm_key_vault.main.id
-
+  
   tags = {
-    environment = terraform.workspace
+    Environment = terraform.workspace
   }
-
-  depends_on = [azurerm_key_vault_access_policy.current_user]
 }
 
 resource "azurerm_key_vault_secret" "ldap_bind_password" {
-  name         = "ldap-bind-password-${local.env_number}"
-  value        = random_password.dc_admin.result
+  name         = "ldap-bind-password-${terraform.workspace}"
+  value        = random_password.ldap_bind_password.result
   key_vault_id = azurerm_key_vault.main.id
-
+  
   tags = {
-    environment = terraform.workspace
+    Environment = terraform.workspace
   }
-
-  depends_on = [azurerm_key_vault_access_policy.current_user]
 } 

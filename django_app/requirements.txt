@@ -2,6 +2,4 @@ Django==4.2.21
 django-auth-ldap==4.6.0
 python-ldap==3.4.3
 gunicorn==21.2.0
-azure-identity==1.15.0
-azure-keyvault-secrets==4.7.0
 python-dotenv==1.0.0 
