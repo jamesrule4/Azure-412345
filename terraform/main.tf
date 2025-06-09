@@ -28,10 +28,9 @@ provider "azurerm" {
 data "azurerm_resource_group" "main" {
   name = var.resource_group_name
 }
-
 # Random ID for unique storage account names
 resource "random_id" "storage_account" {
-  byte_length = 8
+  byte_length = 4
 }
 
 # Generate random passwords

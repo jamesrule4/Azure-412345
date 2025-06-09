@@ -1,59 +1,71 @@
 # Azure Active Directory Integration POC
 
-This project demonstrates a proof-of-concept environment for deploying isolated Windows Active Directory domains with Django web applications in Azure. The goal is to create a self-contained customer environment deployable on demand with minimal interaction—that can scale to thousands of identical environments.
+This project demonstrates automated deployment of isolated Windows Active Directory domains with Django web applications in Azure using Docker containerization. Each deployment creates a self-contained environment that can scale to thousands of identical environments.
+
+## Current Status
+
+**Infrastructure**: Deployed and operational
+- **Django VM**: Ubuntu 22.04 with Docker
+- **Domain Controller**: Windows Server 2022 
+- **Key Vault**: Automated secret management
+- **Network**: Isolated VNet with dynamic IP addressing
+
+**Django Application**: Docker-based deployment
+- Infrastructure deployed successfully
+- Docker installed and configured
+- Django container deployment automated
+- Manual verification/completion may be needed
+
+**Active Directory**: Manual installation required
+- Infrastructure ready, manual AD setup needed via RDP
 
 ## Quick Start
+
+Deploy a new environment with Docker-based Django:
+
 ```bash
-# Clone and setup
-git clone <repository-url>
-cd Azure-412345
-
-# Set up environment variables
-export AZURE_SUBSCRIPTION_ID="your-subscription-id"
-export AZURE_KEY_VAULT_URL="https://kvr4pocdc30ed2f6a96b645.vault.azure.net/"
-
-# Deploy infrastructure
-cd terraform
-terraform init
-terraform apply
-
-# Deploy Django application
-cd ../django_app
-./setup.sh
+./deploy_poc_v2.sh [environment_number]  # Deploy POC environment
 ```
 
-## Project Overview
+The script automatically:
+- **Phase 1**: Deploys infrastructure (VMs, networking, Key Vault)
+- **Phase 2**: Waits for VMs to be ready with connectivity checks
+- **Phase 3**: Installs Docker and Docker Compose on Django VM
+- **Phase 4**: Deploys Django application using Docker containers
+- **Phase 5**: Provides manual AD installation instructions
+- **Phase 6**: Tests Django application accessibility
 
-### Core Requirements
-1. Deploy a Windows domain and Active Directory Domain Controller (AD DC)
-2. Deploy a Django application that authenticates against that domain
-3. All configuration and deployment must be code/script-based (no GUI steps)
-4. Ensure secure communication between components
-5. Create a Django admin user named "fox"
+## What Gets Created
 
-### Azure Permissions
-Current assigned roles in resource group:
-- Network Contributor
-- Virtual Machine Contributor
-- Key Vault Administrator
-- Key Vault Reader
-- Key Vault Secrets User
-- Virtual Machine Administrator Login
-- Storage Account Contributor
-- Key Vault Contributor
+Each environment includes:
+- **Windows Domain Controller** (manual AD setup required)
+- **Django Application Server** running in Docker containers
+- **Virtual Network** with isolated IP ranges (10.X.0.0/16)
+- **Azure Key Vault** for secret management
+- **Network Security Groups** with proper access controls
+- **Docker-based Django deployment** with LDAP authentication capability
 
-## Current Architecture
+## Environment Isolation
 
-### Infrastructure Components
+Each environment is completely isolated:
+- **Workspace**: poc1, poc2, poc3, poc4, etc.
+- **Network**: 10.1.0.0/16, 10.2.0.0/16, 10.3.0.0/16, etc.
+- **Resources**: All resources have unique names with environment suffix
+- **State**: Separate Terraform state files for each environment
+- **Dynamic IPs**: Automatically calculated based on environment number
+
+## Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Azure VNet (10.0.0.0/16)                 │
+│                    Azure VNet (10.X.0.0/16)                     │
 │   ┌──────────────────────────┐      ┌───────────────────────┐   │
 │   │    Domain Controller     │      │     Django Server     │   │
 │   │    Windows Server 2022   │      │     Ubuntu 22.04      │   │
-│   │    10.0.1.10            │      │     10.0.1.11         │   │
-│   │    - Active Directory    │◄────►│     - Django App      │   │
-│   │    - DNS Server         │      │     - LDAP Client     │   │
+│   │    10.X.1.10            │      │     10.X.1.11         │   │
+│   │    - Active Directory    │◄────►│     - Docker Engine   │   │
+│   │    - DNS Server         │      │     - Django Container│   │
+│   │    (Manual Setup)       │      │     - LDAP Client     │   │
 │   └──────────────────────────┘      └───────────────────────┘   │
 │                    ▲                           ▲                 │
 │                    │                           │                 │
@@ -65,279 +77,283 @@ Current assigned roles in resource group:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Deployed Resources
-- **Virtual Network**: 
-  - Name: vnet-poc
-  - Address Space: 10.0.0.0/16
-  - Subnet: 10.0.1.0/24
-- **Virtual Machines**:
-  - Domain Controller (vm-dc-poc):
-    - Size: B2s (2 vCPUs, 4GB RAM)
-    - OS: Windows Server 2022
-    - Disk: Premium SSD
-    - Static IP: 10.0.1.10
-  - Django Server (vm-django-poc):
-    - Size: B1s (1 vCPU, 2GB RAM)
-    - OS: Ubuntu 22.04 LTS
-    - Disk: Standard SSD
-    - Static IP: 10.0.1.11
-- **Network Security Groups**:
-  - nsg-poc (main)
-  - vm-dc-nsg (DC-specific)
-  - Rules configured:
+## Docker-Based Django Deployment
 
-#### Inbound Security Rules
-| Priority | Name                 | Port  | Protocol | Source             | Destination | Action |
-|----------|---------------------|-------|----------|-------------------|-------------|--------|
-| 110      | allow-ldap          | 636   | Tcp      | 10.0.1.0/24       | 10.0.1.10   | Allow  |
-| 120      | allow-rdp           | 3389  | Tcp      | 73.153.182.189/32 | 10.0.1.10   | Allow  |
-| 160      | allow-django-dev    | 8000  | Tcp      | 73.153.182.189/32 | 10.0.1.11   | Allow  |
-| 65000    | AllowVnetInBound    | Any   | Any      | VirtualNetwork    | VirtualNetwork| Allow |
-| 65001    | AllowAzureLoadBalancerInBound | Any | Any | AzureLoadBalancer | Any     | Allow  |
-| 65500    | DenyAllInBound      | Any   | Any      | Any               | Any         | Deny   |
+The Django application runs in Docker containers for better consistency and portability:
 
-#### Outbound Security Rules
-| Priority | Name                   | Port | Protocol | Source        | Destination | Action |
-|----------|------------------------|------|----------|---------------|-------------|--------|
-| 65000    | AllowVnetOutBound     | Any  | Any      | VirtualNetwork| VirtualNetwork| Allow |
-| 65001    | AllowInternetOutBound | Any  | Any      | Any          | Internet    | Allow  |
-| 65500    | DenyAllOutBound       | Any  | Any      | Any          | Any         | Deny   |
+### Django Container Features:
+- **Base Image**: Python 3.9-slim
+- **Dependencies**: Django, django-auth-ldap, python-ldap, gunicorn
+- **Database**: SQLite (lightweight for POC)
+- **Web Server**: Gunicorn with 3 workers
+- **Port**: 8000 (exposed via NSG rule)
+- **Environment**: Dynamic configuration based on POC environment
 
-- **Key Vault**: kvr4pocdc30ed2f6a96b645
-  - Secrets:
-    - django-secret-key
-    - admin-password
-    - ldap-bind-password
-  - Purpose: Secure secret management for infrastructure
-  - Access: Managed via RBAC and access policies
+### Docker Files:
+- `django_app/Dockerfile` - Container definition
+- `django_app/docker-compose.yml` - Container orchestration
+- `django_app/requirements.txt` - Python dependencies
+- `django_app/init_django.py` - Database initialization script
 
-- **Storage Account**: diagdc30ed2f6a96b645
-  - Purpose: VM diagnostics
-  - Type: Standard LRS
-  - Used for: VM boot diagnostics and monitoring
+## Testing Your Environment
 
-## Project Status and Features
+### Get Environment Information
+After deployment, get your environment details:
+```bash
+cd terraform
+terraform workspace select [environment_name]  # e.g., poc3
+terraform output
+```
 
-### Completed Features
-- [x] Basic infrastructure deployment
-- [x] Windows DC with AD DS
-- [x] Ubuntu VM with Python/Django
-- [x] Key Vault integration
-- [x] Network security groups
-- [x] Basic deployment scripts
+### Test Django Application
+```bash
+# Test Django accessibility (replace with your Django VM IP)
+curl http://[DJANGO_VM_IP]:8000/
 
-### In Progress
-- [ ] AD DC configuration automation
-- [ ] Django deployment automation
-- [ ] End-to-end authentication testing
-- [ ] Documentation improvements
+# Test Django admin interface
+curl http://[DJANGO_VM_IP]:8000/admin/
+```
 
-### Planned Features
-- [ ] Monitoring setup
-- [ ] Backup configuration
-- [ ] Cost optimization
+### Connect to Django Server via SSH
+```bash
+# SSH to Django VM (replace with your IP)
+ssh -i ~/.ssh/id_rsa azureadmin@[DJANGO_VM_IP]
 
-## Development Workflow
+# Check Docker containers
+docker-compose ps
+docker-compose logs
 
-### Project Structure
+# Restart Django container if needed
+docker-compose restart
+```
+
+### Django Admin Access
+- **URL**: `http://[DJANGO_VM_IP]:8000/admin/`
+- **Username**: `fox`
+- **Password**: `FoxAdmin2025!`
+
+### Connect to Domain Controller
+1. Go to Azure Portal → Virtual Machines → `vm-dc-[environment]`
+2. Click "Connect" → "RDP"
+3. Login with:
+   - **Username**: `azureadmin`
+   - **Password**: `TempAdminPass2025!` (hardcoded for POC)
+
+### Manual Active Directory Installation
+Since VM extensions had reliability issues, AD installation is now manual:
+
+1. **RDP to Domain Controller** using the IP from terraform output
+2. **Run PowerShell as Administrator**
+3. **Execute the following commands**:
+
+```powershell
+# Install AD Domain Services
+Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
+
+# Install the domain (system will reboot)
+Import-Module ADDSDeployment
+$SafeModePassword = ConvertTo-SecureString 'TempAdminPass2025!' -AsPlainText -Force
+Install-ADDSForest -DomainName rule4.local -SafeModeAdministratorPassword $SafeModePassword -Force
+```
+
+4. **After reboot, create LDAP test users**:
+```powershell
+# Create test users for LDAP authentication
+New-ADUser -Name 'testuser' -UserPrincipalName 'testuser@rule4.local' -AccountPassword (ConvertTo-SecureString 'TestPass123!' -AsPlainText -Force) -Enabled $true
+New-ADUser -Name 'django' -UserPrincipalName 'django@rule4.local' -AccountPassword (ConvertTo-SecureString 'hardcoded-ldap-password-for-poc' -AsPlainText -Force) -Enabled $true
+```
+
+## Managing Environments
+
+### List all environments:
+```bash
+cd terraform
+terraform workspace list
+```
+
+### Switch to an environment:
+```bash
+cd terraform
+terraform workspace select [environment_name]
+```
+
+### View resources in current environment:
+```bash
+cd terraform
+terraform output
+```
+
+### Destroy an environment:
+```bash
+cd terraform
+terraform workspace select [environment_name]
+terraform destroy -auto-approve
+```
+
+### Check Django container status:
+```bash
+# SSH to Django VM
+ssh azureadmin@[DJANGO_VM_IP]
+
+# Check container status
+cd /home/azureadmin/django_app
+docker-compose ps
+docker-compose logs --tail=50
+
+# Restart if needed
+docker-compose restart
+```
+
+## Prerequisites
+
+1. **Azure CLI** installed and logged in:
+   ```bash
+   az login
+   ```
+
+2. **Terraform** installed (version ~> 1.0)
+
+3. **SSH Key Pair** in `~/.ssh/id_rsa` (for VM access)
+
+4. **Required Azure permissions**:
+   - Contributor access to resource group `r4-onboarding-james`
+   - Storage Account Contributor (for backend setup)
+
+## Project Structure
 ```
 .
-├── django_app/                 # Django web application
-│   ├── authentication/         # AD DC authentication app
-│   │   ├── management/        # Django management commands
-│   │   │   └── commands/      # Custom commands for AD DC setup
-│   │   └── templates/         # Authentication templates
-│   ├── config/                # Django settings & configuration
-│   │   ├── settings.py        # Main Django settings
-│   │   ├── keyvault.py       # Azure Key Vault integration
-│   │   └── urls.py           # URL routing
-│   └── requirements.txt       # Python dependencies
-├── scripts/                   # Deployment scripts
-│   ├── linux/                # Ubuntu/Django VM scripts
-│   │   └── deploy.sh         # Django deployment script
-│   ├── windows/              # Windows DC scripts
-│   │   └── configure-ad.ps1  # AD DS configuration script
-│   └── create_environment.sh # Environment creation script
-├── terraform/                # Infrastructure as Code
-│   ├── main.tf              # Main Terraform configuration
-│   ├── network.tf           # Network & NSG definitions
-│   ├── dc.tf               # Domain Controller configuration
-│   ├── django_vm.tf        # Django VM configuration
-│   ├── keyvault.tf         # Key Vault configuration
-│   ├── storage.tf          # Storage account configuration
-│   ├── variables.tf         # Input variables
-│   ├── locals.tf            # Local variables for workspaces
-│   └── outputs.tf           # Output definitions
-└── README.md                # Project documentation
+├── django_app/                 # Django web application (Docker-based)
+│   ├── Dockerfile              # Django container definition
+│   ├── docker-compose.yml     # Container orchestration
+│   ├── requirements.txt       # Python dependencies (minimal)
+│   ├── init_django.py         # Database initialization
+│   ├── manage.py              # Django management script
+│   ├── create_superuser.py    # Django superuser creation
+│   ├── django_app/            # Main Django application
+│   │   ├── settings.py        # Django settings (LDAP configured)
+│   │   ├── urls.py            # URL routing
+│   │   └── wsgi.py            # WSGI application
+│   ├── authentication/        # AD authentication app
+│   └── README.md              # Django deployment documentation
+├── terraform/                 # Infrastructure as Code
+│   ├── main.tf                # Main Terraform configuration
+│   ├── dc.tf                  # Domain Controller configuration
+│   ├── django_vm.tf           # Django VM configuration (Docker setup)
+│   ├── keyvault.tf            # Key Vault configuration
+│   ├── network.tf             # Network configuration
+│   ├── locals.tf              # Dynamic IP calculation
+│   ├── variables.tf           # Input variables
+│   ├── outputs.tf             # Output values
+│   └── terraform.tfstate.d/   # Terraform workspace states
+├── deploy_poc_v2.sh           # Modern Docker-based deployment script
+├── deploy_poc.sh              # Legacy deployment script
+├── create_ad_users.ps1        # AD user creation script
+├── .gitignore                 # Git ignore rules
+└── README.md                  # This file
 ```
 
-### Workspace-Based Deployment
-Each environment is managed through Terraform workspaces:
-```bash
-# Create and switch to a new environment
-terraform workspace new poc2
+## Deployment Phases
 
-# Deploy the environment
-terraform apply
+The `deploy_poc_v2.sh` script runs in phases:
 
-# List available environments
-terraform workspace list
+1. **Phase 1: Infrastructure Deployment**
+   - Creates VMs, networking, Key Vault
+   - Sets up dynamic IP addressing
 
-# Switch between environments
-terraform workspace select poc1
-```
+2. **Phase 2: VM Readiness Check**
+   - Waits for SSH connectivity to Django VM
+   - Waits for RDP connectivity to Domain Controller
 
-Each workspace maintains its own state and creates isolated resources with unique names based on the workspace name (e.g., vm-dc-poc2, nic-django-poc2).
+3. **Phase 3: Docker Installation**
+   - Installs Docker Engine and Docker Compose
+   - Configures Docker service
 
-### Deployment Steps
-1. Infrastructure provisioning (Terraform)
-2. Domain Controller configuration (PowerShell)
-3. Django application deployment (Bash)
-4. Authentication setup and testing
+4. **Phase 4: Django Application Deployment**
+   - Copies Django application files
+   - Creates dynamic environment configuration
+   - Builds and starts Django container
 
-## Cost Estimation
-Monthly cost for a single environment:
-- B2s VM (DC): ~$30/month
-- B1s VM (Django): ~$15/month
-- Storage: ~$5/month
-- Key Vault: Free tier
-- Network: Minimal costs
-Total: ~$55/month
+5. **Phase 5: Active Directory Installation**
+   - Provides manual installation instructions
+   - Creates PowerShell scripts for AD setup
 
-## Next Steps
-1. Complete AD DC automation 
-2. Implement Django deployment automation
-3. Set up authentication flow
-4. Restrict external access to Rule4's egress IP
-5. Create deployment documentation
-
-## Security Considerations
-- All configuration and secrets managed via Azure Key Vault
-- LDAPS for secure authentication
-- NSG rules following least-privilege principle
-- Network isolation between environments
+6. **Phase 6: Testing**
+   - Tests Django application accessibility
+   - Provides troubleshooting information
 
 ## Authentication Flow
 
-1. User accesses Django application
+1. User accesses Django application at `http://[DJANGO_VM_IP]:8000/`
 2. Django redirects to login page
-3. User enters AD credentials
-4. Django-LDAP authenticates against Windows DC:
-   - Verifies credentials via LDAPS (port 636)
-   - Checks group memberships
-   - Creates/updates local Django user
-5. Upon success:
-   - User session created
-   - User permissions synced from AD groups
-   - User redirected to home page
-6. For admin user "fox":
-   - Created automatically during deployment
-   - Granted Django superuser privileges
-   - Can access Django admin interface
+3. User enters AD credentials (e.g., testuser@rule4.local)
+4. Django-LDAP authenticates against Windows DC via LDAP (port 389)
+5. Upon success, user session is created with appropriate permissions
 
-## Getting Started
+## Fox User (Django Admin)
 
-### Prerequisites
-Before starting, ensure you have:
-- Azure CLI (latest version)
-- Terraform (>= 1.0.0)
-- Python (>= 3.9)
-- Git
+The `fox` user is a **Django superuser** (not an Active Directory user):
+- **Username**: `fox`
+- **Password**: `FoxAdmin2025!` (hardcoded for POC)
+- **Purpose**: Django admin interface access
+- **Access**: `http://[DJANGO_VM_IP]:8000/admin/`
 
-### Development Setup
-1. Clone and configure:
-   ```bash
-   # Clone repository
-   git clone <repository-url>
-   cd Azure-412345
+## Troubleshooting
 
-   # Configure Azure authentication
-   az login
-   az account set --subscription <subscription-id>
+### Django Container Issues
+```bash
+# SSH to Django VM
+ssh azureadmin@[DJANGO_VM_IP]
 
-   # Set required environment variables
-   export AZURE_SUBSCRIPTION_ID="your-subscription-id"
-   export AZURE_KEY_VAULT_URL="https://kvr4pocdc30ed2f6a96b645.vault.azure.net/"
-   ```
+# Check container status
+docker-compose ps
 
-2. Infrastructure deployment:
+# View logs
+docker-compose logs
 
-   # Deploy Azure resources
-   cd terraform
-   terraform init
-   terraform plan    # Review changes
-   terraform apply   # Deploy infrastructure
-   ```
+# Restart container
+docker-compose restart
 
-3. Application deployment:
-   ```bash
-   # Set up Django environment
-   cd ../django_app
-   python -m venv venv
-   source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-   pip install -r requirements.txt
-   ./setup.sh
-   ```
-
-### Verification Steps
-1. Check infrastructure:
-   ```bash
-   az vm list -g r4-onboarding-james -o table
-   az network vnet list -g r4-onboarding-james -o table
-   ```
-
-2. Verify AD DC:
-   - RDP to DC (10.0.1.10)
-   - Check AD Users and Computers
-   - Verify LDAPS certificate
-
-3. Test Django application:
-   - Access Django admin: https://10.0.1.11/admin
-   - Try logging in with AD credentials
-   - Check LDAP group synchronization
-
-## References
-
-- [Azure Documentation](https://docs.microsoft.com/azure)
-- [Django-LDAP Documentation](https://django-auth-ldap.readthedocs.io/)
-- [Terraform Azure Provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
-
-## Self-Contained Environments
-
-### Overview
-The project supports deploying multiple isolated environments, each containing:
-- A dedicated Domain Controller (DC)
-- A Django application server
-- Isolated networking
-- Environment-specific secrets
-
-### Deployment Pattern
-Each environment follows this pattern:
-```
-Environment N:
-├── Network (vnet-pocN)
-│   └── Subnet (10.N.1.0/24)
-├── Domain Controller (vm-dc-pocN)
-└── Django Server (vm-django-pocN)
+# Rebuild container
+docker-compose up -d --build
 ```
 
-### Resource Naming
-Resources are numbered sequentially (poc1, poc2, etc.):
-- Virtual Machines: vm-dc-poc1, vm-django-poc1
-- Network Interfaces: nic-dc-poc1, nic-django-poc1
-- Network Security Groups: nsg-poc1
-- Virtual Networks: vnet-poc1
+### Network Connectivity Issues
+```bash
+# Test Django accessibility
+curl http://[DJANGO_VM_IP]:8000/
 
-### Network Isolation
-Each environment gets its own address space:
-- Environment 1: 10.1.0.0/16
-- Environment 2: 10.2.0.0/16
-- Environment N: 10.N.0.0/16
+# Check NSG rules (should allow port 8000)
+az network nsg rule list --resource-group r4-onboarding-james --nsg-name nsg-[environment] --query "[?destinationPortRange=='8000']"
+```
 
-### Secret Management
-All secrets are stored in the central Key Vault with environment-specific prefixes:
-- django-secret-key-1, django-secret-key-2
-- admin-password-1, admin-password-2
-- ldap-bind-password-1, ldap-bind-password-2
+### Active Directory Issues
+- Ensure manual AD installation completed successfully
+- Check domain controller is responding on port 389
+- Verify test users were created in AD
+
+## Known Issues
+
+1. **PowerShell Display Issues**: Terminal may show display errors - these are cosmetic and don't affect functionality
+2. **VM Extension Reliability**: Switched to manual AD installation due to timing issues with VM extensions
+3. **Key Vault Permissions**: Some environments may have Key Vault access restrictions
+
+## Next Steps
+
+1. **Complete Django deployment** if Phase 4 was interrupted
+2. **Install Active Directory** manually on Domain Controller
+3. **Test LDAP authentication** between Django and AD
+4. **Deploy additional environments** as needed
+
+## Assignment Requirements Status
+
+- Azure environment in `r4-onboarding-james` resource group
+- Windows domain `rule4.local` infrastructure ready
+- Single domain controller (manual AD installation required)
+- Ubuntu VM with Django app using Docker
+- Django admin user named `fox`
+- LDAPS for secure communication (requires AD installation)
+- All configuration automated via code (except AD installation)
+
+**Current Focus**: Complete Django container deployment and manual AD installation.
 
 

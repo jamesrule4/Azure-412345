@@ -1,0 +1,15 @@
+[Unit]
+Description=gunicorn daemon for Django Rule4 POC
+After=network.target
+
+[Service]
+User=azureadmin
+Group=azureadmin
+WorkingDirectory=/home/azureadmin/django_app
+Environment="PATH=/home/azureadmin/venv/bin"
+ExecStart=/home/azureadmin/venv/bin/gunicorn --workers 3 --bind unix:/run/gunicorn.sock django_app.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target 

@@ -30,30 +30,56 @@ resource "azurerm_network_security_group" "main" {
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
-  # Allow RDP from Rule4 IP only
+  # Allow RDP to Domain Controller
   security_rule {
-    name                       = "AllowRDPFromRule4"
+    name                       = "AllowRDPToDC"
     priority                   = 100
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range         = "*"
     destination_port_range    = "3389"
-    source_address_prefix     = "${var.rule4_ip}/32"  # Rule4 egress IP
-    destination_address_prefix = "${local.domain_controller_ip}/32"  # Only to DC
+    source_address_prefixes   = [var.admin_ip_address]
+    destination_address_prefix = "10.${var.environment_number}.1.10"
   }
 
-  # Allow SSH from Rule4 IP only
+  # Allow SSH to Django VM
   security_rule {
-    name                       = "AllowSSHFromRule4"
-    priority                   = 110
+    name                       = "AllowSSHToDjangoVM"
+    priority                   = 170
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range         = "*"
     destination_port_range    = "22"
-    source_address_prefix     = "${var.rule4_ip}/32"  # Rule4 egress IP
-    destination_address_prefix = "${local.django_instance_ips[0]}/32"  # Only to first Django VM
+    source_address_prefixes   = [var.admin_ip_address]
+    destination_address_prefix = "10.${var.environment_number}.1.11"
+  }
+
+  # Allow HTTP to Django VM
+  security_rule {
+    name                       = "AllowHTTPToDjangoVM"
+    priority                   = 150
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range         = "*"
+    destination_port_range    = "80"
+    source_address_prefixes   = [var.admin_ip_address]
+    destination_address_prefix = "10.${var.environment_number}.1.11"
+  }
+
+  # Allow LDAP between VMs
+  security_rule {
+    name                       = "AllowLDAP"
+    priority                   = 115
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range         = "*"
+    destination_port_range    = "389"
+    source_address_prefix     = local.subnet_cidr
+    destination_address_prefix = "10.${var.environment_number}.1.10"
   }
 
   # Allow LDAPS between VMs
@@ -66,20 +92,7 @@ resource "azurerm_network_security_group" "main" {
     source_port_range         = "*"
     destination_port_range    = "636"
     source_address_prefix     = local.subnet_cidr
-    destination_address_prefix = "${local.domain_controller_ip}/32"  # Only to DC
-  }
-
-  # Allow Django development server
-  security_rule {
-    name                       = "AllowDjangoDevServer"
-    priority                   = 130
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range         = "*"
-    destination_port_range    = "8000"
-    source_address_prefix     = "${var.rule4_ip}/32"  # Rule4 egress IP
-    destination_address_prefix = "${local.django_instance_ips[0]}/32"  # Only to first Django VM
+    destination_address_prefix = "10.${var.environment_number}.1.10"
   }
 
   depends_on = [azurerm_subnet.main]

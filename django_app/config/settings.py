@@ -8,14 +8,21 @@ import os
 from pathlib import Path
 import ldap
 from django_auth_ldap.config import LDAPSearch, GroupOfNamesType, ActiveDirectoryGroupType
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load environment variables from .env file
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
 # Base Django settings - Retrieved from Key Vault in production
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-only-local-key')
-DEBUG = False
-ALLOWED_HOSTS = ['10.0.1.11']  # Django VM IP address
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+
+# Parse ALLOWED_HOSTS from environment
+allowed_hosts_str = os.environ.get('ALLOWED_HOSTS', 'localhost')
+ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_str.split(',')]
 
 # Application definition - Standard Django apps
 INSTALLED_APPS = [
@@ -25,6 +32,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'authentication',  # Custom authentication app
 ]
 
 # Standard Django middleware for security and session management
@@ -38,7 +46,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'django_app.urls'
+ROOT_URLCONF = 'config.urls'
 
 # Template configuration with default Django backend
 TEMPLATES = [
@@ -57,7 +65,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'django_app.wsgi.application'
+WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database configuration - Using SQLite for simplicity
 DATABASES = {
@@ -69,7 +77,7 @@ DATABASES = {
 
 # LDAP Authentication settings
 # All sensitive values are retrieved from Azure Key Vault in production
-AUTH_LDAP_SERVER_URI = os.environ.get('LDAP_SERVER_URI', 'ldap://10.0.1.10')  # Domain Controller IP
+AUTH_LDAP_SERVER_URI = os.environ.get('LDAP_SERVER_URI', 'ldap://localhost')  # Will be set by Terraform
 AUTH_LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN', 'CN=django,CN=Users,DC=rule4,DC=local')
 AUTH_LDAP_BIND_PASSWORD = os.environ.get('LDAP_BIND_PASSWORD', '')  # Retrieved from Key Vault
 
@@ -115,8 +123,8 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
 # Security settings
 SECURE_SSL_REDIRECT = False  # SSL termination happens at Nginx
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = False  # Set to True when using HTTPS
+CSRF_COOKIE_SECURE = False    # Set to True when using HTTPS
 X_FRAME_OPTIONS = 'DENY'  # Prevent clickjacking
 
 # Internationalization
@@ -129,9 +137,9 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Login settings
-LOGIN_URL = '/login/'
-LOGIN_REDIRECT_URL = '/home/'
-LOGOUT_REDIRECT_URL = '/login/'
+LOGIN_URL = '/admin/login/'
+LOGIN_REDIRECT_URL = '/admin/'
+LOGOUT_REDIRECT_URL = '/admin/login/'
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
