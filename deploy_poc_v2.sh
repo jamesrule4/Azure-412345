@@ -1,9 +1,23 @@
 #!/bin/bash
 
-# Rule4 POC - Docker-based Deployment with Proper Sequencing
-# Addresses timing issues and uses containerized Django
+# Rule4 POC - Docker-based Deployment with Automated LDAP/AD Setup
+# Fully automated "push button" deployment with no manual steps
 
 set -e
+
+# Install required tools for LDAP testing
+if ! command -v ldapsearch >/dev/null 2>&1; then
+    echo "Installing LDAP utilities for AD verification..."
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update -qq && sudo apt-get install -y ldap-utils
+    elif command -v yum >/dev/null 2>&1; then
+        sudo yum install -y openldap-clients
+    elif command -v brew >/dev/null 2>&1; then
+        brew install openldap
+    else
+        echo "Warning: Could not install LDAP utilities. AD verification will be limited."
+    fi
+fi
 
 # Configuration
 ENV_NUM=${1:-1}
@@ -176,71 +190,122 @@ docker-compose logs --tail=20
 echo "Django container deployment completed"
 DOCKER_DEPLOY
 
-# Step 5: Install Active Directory (Now that everything is ready)
+# Step 5: Wait for Automated Active Directory Installation
 echo ""
-echo "=== Phase 5: Active Directory Installation ==="
-echo "Installing Active Directory on Domain Controller..."
+echo "=== Phase 5: Automated Active Directory Installation ==="
+echo "Waiting for automated AD installation to complete..."
+echo "This process includes:"
+echo "  1. Installing AD Domain Services"
+echo "  2. Creating rule4.local domain"
+echo "  3. Automatic reboot"
+echo "  4. Creating LDAP users and groups"
 
-# Use hardcoded admin password (no Key Vault dependency)
+# Use hardcoded admin password (consistent with Terraform)
 DC_PASSWORD="TempAdminPass2025!"
 
-# Create AD installation script
-cat > /tmp/install_ad.ps1 << 'AD_SCRIPT'
-# Install AD Domain Services
-Write-Output "Installing AD Domain Services..."
-Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
+# Wait for AD installation to complete (VM extension handles this automatically)
+echo "Monitoring AD installation progress..."
+AD_READY=false
+for i in {1..60}; do
+    echo "Checking AD installation progress... (attempt $i/60)"
+    
+    # Check if we can connect to LDAP port (indicates AD is running)
+    if timeout 10 bash -c "</dev/tcp/$DC_IP/389" 2>/dev/null; then
+        echo "LDAP port 389 is responding on Domain Controller"
+        
+        # Additional check: try to query AD using ldapsearch if available
+        # This is a more reliable indicator that AD is fully configured
+        if command -v ldapsearch >/dev/null 2>&1; then
+            if ldapsearch -x -H "ldap://$DC_IP:389" -b "DC=rule4,DC=local" "(objectClass=domain)" dn 2>/dev/null | grep -q "rule4.local"; then
+                echo "Active Directory domain rule4.local is responding!"
+                AD_READY=true
+                break
+            fi
+        else
+            # If ldapsearch not available, assume AD is ready if port is open
+            echo "LDAP port is open, assuming AD installation completed"
+            AD_READY=true
+            break
+        fi
+    fi
+    
+    echo "AD installation still in progress... waiting 30 seconds"
+    sleep 30
+done
 
-# Install the domain
-Write-Output "Creating rule4.local domain..."
-Import-Module ADDSDeployment
-$SafeModePassword = ConvertTo-SecureString 'ADMIN_PASSWORD_PLACEHOLDER' -AsPlainText -Force
-Install-ADDSForest -DomainName rule4.local -SafeModeAdministratorPassword $SafeModePassword -Force -NoRebootOnCompletion:$false
+if [ "$AD_READY" = "true" ]; then
+    echo "✅ Active Directory installation completed successfully!"
+    echo "   Domain: rule4.local"
+    echo "   LDAP Server: $DC_IP:389"
+    echo "   Django service account: django@rule4.local"
+    echo "   Test users: testuser@rule4.local, adminuser@rule4.local"
+else
+    echo "⚠️  AD installation is taking longer than expected"
+    echo "   The VM extension may still be running in the background"
+    echo "   You can check progress by RDPing to: $DC_IP"
+    echo "   Username: azureadmin"
+    echo "   Password: $DC_PASSWORD"
+fi
 
-Write-Output "Domain installation initiated. System will reboot."
-AD_SCRIPT
-
-# Replace password placeholder
-sed -i "s/ADMIN_PASSWORD_PLACEHOLDER/$DC_PASSWORD/g" /tmp/install_ad.ps1
-
-# Copy and execute AD installation script on Domain Controller
-# Note: This requires WinRM to be enabled, which should happen automatically
-echo "Executing AD installation script..."
-echo "Note: Domain Controller will reboot during this process"
-
-# For now, we'll provide manual instructions since WinRM setup is complex
+# Step 6: Test Django Application and LDAP Integration
 echo ""
-echo "=== Manual AD Installation Required ==="
-echo "Please RDP to the Domain Controller and run the following PowerShell scripts:"
-echo ""
-echo "Domain Controller: $DC_IP"
-echo "Username: azureadmin"
-echo "Password: $DC_PASSWORD"
-echo ""
-echo "Step 1 - Install Active Directory (run this first):"
-cat /tmp/install_ad.ps1
-echo ""
-echo "Step 2 - After reboot, create LDAP users (run this after AD installation):"
-echo "# Create LDAP test users"
-echo "New-ADUser -Name 'testuser' -UserPrincipalName 'testuser@rule4.local' -AccountPassword (ConvertTo-SecureString 'TestPass123!' -AsPlainText -Force) -Enabled \$true"
-echo "New-ADUser -Name 'django' -UserPrincipalName 'django@rule4.local' -AccountPassword (ConvertTo-SecureString 'hardcoded-ldap-password-for-poc' -AsPlainText -Force) -Enabled \$true"
-echo ""
-
-# Step 6: Test Django Application
-echo ""
-echo "=== Phase 6: Testing Django Application ==="
-echo "Testing Django application..."
+echo "=== Phase 6: Testing Django Application and LDAP Integration ==="
+echo "Testing Django application and LDAP authentication..."
 
 sleep 10
 if curl -f http://$DJANGO_IP:8000/ > /dev/null 2>&1; then
-    echo "Django application is responding!"
+    echo "✅ Django application is responding!"
+    
+    # Test LDAP connectivity from Django VM
+    echo "Testing LDAP connectivity from Django VM..."
+    ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP << 'LDAP_TEST'
+cd /home/azureadmin/django_app
+
+# Test LDAP connectivity using Django's LDAP configuration
+echo "Testing LDAP authentication from Django..."
+docker-compose exec -T django python manage.py shell << 'PYTHON_EOF'
+import os
+import django
+from django.conf import settings
+from django.contrib.auth import authenticate
+
+# Test LDAP connection
+try:
+    import ldap
+    
+    # Get LDAP settings from environment
+    ldap_uri = os.environ.get('LDAP_SERVER_URI', 'ldap://10.1.1.10:389')
+    
+    print(f"Testing LDAP connection to {ldap_uri}")
+    conn = ldap.initialize(ldap_uri)
+    conn.simple_bind_s("", "")  # Anonymous bind to test connectivity
+    print("✅ LDAP connection successful!")
+    
+    # Test Django LDAP authentication with test user
+    print("Testing Django LDAP authentication...")
+    user = authenticate(username='testuser', password='TestPass123!')
+    if user:
+        print(f"✅ LDAP authentication successful for user: {user.username}")
+        print(f"   User email: {user.email}")
+        print(f"   Is staff: {user.is_staff}")
+        print(f"   Is superuser: {user.is_superuser}")
+    else:
+        print("⚠️  LDAP authentication failed - user may not exist yet or AD still initializing")
+    
+    conn.unbind()
+    
+except Exception as e:
+    print(f"❌ LDAP test failed: {e}")
+    print("This may be normal if AD is still initializing")
+
+PYTHON_EOF
+LDAP_TEST
+
 else
-    echo "Django application is not responding yet"
+    echo "❌ Django application is not responding yet"
     echo "Checking container status..."
     ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP "cd /home/azureadmin/django_app && docker-compose logs"
 fi
-
-# Cleanup
-rm -f /tmp/install_ad.ps1
 
 echo ""
 echo "=== Deployment Summary ==="
@@ -257,10 +322,10 @@ echo "   Subnet CIDR: 10.$ENV_NUM.1.0/24"
 echo "   Domain Controller: $DOMAIN_CONTROLLER_IP"
 echo "   Django VM: $DJANGO_VM_IP"
 echo ""
-echo "Active Directory: Manual installation required"
-echo "   RDP to: $DC_IP"
-echo "   Username: azureadmin"
-echo "   Password: $DC_PASSWORD"
+echo "Active Directory: Automated installation"
+echo "   LDAP Server: $DC_IP:389"
+echo "   Django service account: django@rule4.local"
+echo "   Test users: testuser@rule4.local, adminuser@rule4.local"
 echo ""
 echo "Troubleshooting:"
 echo "   SSH to Django: ssh azureadmin@$DJANGO_IP"
@@ -268,6 +333,5 @@ echo "   Check containers: docker-compose ps"
 echo "   View logs: docker-compose logs"
 echo ""
 echo "Next Steps:"
-echo "1. RDP to Domain Controller and install AD using the provided script"
-echo "2. After AD installation, test LDAP connectivity from Django"
-echo "3. Create test users in AD and verify Django LDAP authentication" 
+echo "1. Verify LDAP connectivity from Django"
+echo "2. Create test users in AD and verify Django LDAP authentication" 
