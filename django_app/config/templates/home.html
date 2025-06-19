@@ -69,7 +69,7 @@
             
             <a href="{% url 'django_auth_adfs:logout' %}" class="btn btn-danger">Logout</a>
         {% else %}
-            <p>Please log in to access the application.</p>
+            <p>Login required to access the application.</p>
             <a href="{% url 'django_auth_adfs:login' %}" class="btn">Login with AD FS</a>
         {% endif %}
     </div>

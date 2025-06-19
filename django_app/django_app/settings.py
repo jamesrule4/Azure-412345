@@ -101,13 +101,13 @@ if LDAP_SERVER_URI:
     ]
     
     AUTH_LDAP_SERVER_URI = LDAP_SERVER_URI
-    AUTH_LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN', '')
+    AUTH_LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN', 'django@rule4.local')
     AUTH_LDAP_BIND_PASSWORD = os.environ.get('LDAP_BIND_PASSWORD', '')
     
     AUTH_LDAP_USER_SEARCH = LDAPSearch(
-        "CN=Users,DC=rule4,DC=local",
+        "DC=rule4,DC=local",
         ldap.SCOPE_SUBTREE,
-        "(sAMAccountName=%(user)s)"
+        "(uid=%(user)s)"
     )
     
     AUTH_LDAP_USER_ATTR_MAP = {
@@ -115,6 +115,8 @@ if LDAP_SERVER_URI:
         "last_name": "sn",
         "email": "mail"
     }
+    
+    AUTH_LDAP_ALWAYS_UPDATE_USER = True
 else:
     AUTHENTICATION_BACKENDS = [
         'django.contrib.auth.backends.ModelBackend',

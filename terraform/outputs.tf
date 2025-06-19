@@ -1,14 +1,14 @@
 # Resource IDs and network info
 output "domain_controller_id" {
-  value = azurerm_windows_virtual_machine.dc.id
+  value = azurerm_linux_virtual_machine.samba_dc.id
 }
 
 output "domain_controller_private_ip" {
-  value = azurerm_windows_virtual_machine.dc.private_ip_address
+  value = azurerm_linux_virtual_machine.samba_dc.private_ip_address
 }
 
 output "domain_controller_public_ip" {
-  value = azurerm_public_ip.dc.ip_address
+  value = azurerm_public_ip.samba_dc.ip_address
 }
 
 output "django_vm_public_ip" {

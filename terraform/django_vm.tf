@@ -325,6 +325,34 @@ resource "azurerm_virtual_machine_extension" "docker_setup" {
 }
 
 # Configure NSG rules for Django VMs - Fixed priorities to avoid conflicts
+resource "azurerm_network_security_rule" "allow_vnet_inbound" {
+  name                        = "AllowVNetInbound"
+  priority                    = 102
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "*"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "VirtualNetwork"
+  destination_address_prefix  = "VirtualNetwork"
+  resource_group_name         = data.azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.main.name
+}
+
+resource "azurerm_network_security_rule" "allow_icmp" {
+  name                        = "AllowICMP"
+  priority                    = 101
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Icmp"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "10.0.0.0/8"
+  destination_address_prefix  = "*"
+  resource_group_name         = data.azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.main.name
+}
+
 resource "azurerm_network_security_rule" "allow_rdp" {
   name                        = "AllowRDPFromRule4"
   priority                    = 105  # Changed from 100 to avoid conflict with AllowRDPToDC
@@ -361,6 +389,20 @@ resource "azurerm_network_security_rule" "allow_https" {
   protocol                    = "Tcp"
   source_port_range           = "*"
   destination_port_range      = "443"
+  source_address_prefix       = "0.0.0.0/0"
+  destination_address_prefix  = "*"
+  resource_group_name         = data.azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.main.name
+}
+
+resource "azurerm_network_security_rule" "allow_django" {
+  name                        = "AllowDjango"
+  priority                    = 135
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "8000"
   source_address_prefix       = "0.0.0.0/0"
   destination_address_prefix  = "*"
   resource_group_name         = data.azurerm_resource_group.main.name

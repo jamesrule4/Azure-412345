@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   django:
-    build: .
+    image: jamesrule4/django-app:latest
     container_name: rule4-django-minimal
     ports:
       - "8000:8000"
@@ -13,8 +13,8 @@ services:
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
       # LDAP Configuration - will be set dynamically by deployment script
       - LDAP_SERVER_URI=${LDAP_SERVER_URI:-}
-      - LDAP_BIND_DN=CN=django,CN=Users,DC=rule4,DC=local
-      - LDAP_BIND_PASSWORD=hardcoded-ldap-password-for-poc
+      - LDAP_BIND_DN=django@rule4.local
+      - LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD:-hardcoded-ldap-password-for-poc}
     volumes:
       - ./static:/app/static
     restart: unless-stopped 

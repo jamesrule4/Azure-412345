@@ -16,7 +16,7 @@ django_app/
 │   ├── settings.py         # Django configuration with LDAP
 │   ├── urls.py             # URL routing
 │   └── wsgi.py             # WSGI application
-└── README.md               # This file
+└── README.md               # Documentation
 ```
 
 ## Features
@@ -53,7 +53,7 @@ The application is automatically deployed using the `deploy_poc_v2.sh` script:
 
 ### Manual Docker Commands
 
-If you need to run the container manually:
+For manual container execution:
 
 ```bash
 # Build the image

@@ -1,9 +1,17 @@
 # Get current client configuration
 data "azurerm_client_config" "current" {}
 
+# Random ID for unique Key Vault names (workspace-specific)
+resource "random_id" "keyvault" {
+  byte_length = 4
+  keepers = {
+    workspace = terraform.workspace
+  }
+}
+
 # Key Vault
 resource "azurerm_key_vault" "main" {
-  name                = "kv-${terraform.workspace}-${random_id.storage_account.hex}"
+  name                = "kv-${terraform.workspace}-${random_id.keyvault.hex}"
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
