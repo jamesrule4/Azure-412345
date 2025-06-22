@@ -143,47 +143,53 @@ DOCKER_INSTALL
 # Step 4: Deploy Django Application using Docker
 echo ""
 echo "=== Phase 4: Django Application Deployment ==="
-echo "Deploying Django application with Docker..."
+echo "Deploying Django application from Docker Hub..."
 
-# Create Django app directory structure on VM
+# Create Django app directory structure on VM for docker-compose
 ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP "mkdir -p /home/azureadmin/django_app"
 
-# Copy Django files to VM (remove SSH key reference)
-echo "Copying Django application files..."
-scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -r django_app/* azureadmin@$DJANGO_IP:/home/azureadmin/django_app/
+# Copy only the docker-compose.yml file to VM
+echo "Copying Docker Compose configuration..."
+scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes django_app/docker-compose.yml azureadmin@$DJANGO_IP:/home/azureadmin/django_app/
 
-# Set up environment variables for Docker Compose (use consistent IP variables)
+# Set up environment variables for Docker Compose
 echo "Setting up environment variables..."
 ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP << ENV_SETUP
 cd /home/azureadmin/django_app
 
-# Create .env file with dynamic IPs and hardcoded secrets
+# Create .env file with dynamic IPs and environment variables
 cat > .env << EOF
 ALLOWED_HOSTS=$DJANGO_IP,localhost,$DJANGO_VM_IP
 LDAP_SERVER_URI=ldap://$DOMAIN_CONTROLLER_IP:389
+DJANGO_SECRET_KEY=hardcoded-secret-key-for-poc-testing-only-2025
+DEBUG=False
 EOF
 
 chmod 600 .env
 echo "Environment file created with dynamic IPs for environment $ENV_NUM"
 ENV_SETUP
 
-# Build and start Django container
-echo "Building and starting Django container..."
+# Pull and start Django container from Docker Hub
+echo "Pulling latest Django image from Docker Hub and starting container..."
 ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o PasswordAuthentication=yes azureadmin@$DJANGO_IP << 'DOCKER_DEPLOY'
 cd /home/azureadmin/django_app
 
-# Initialize Django (run migrations and create superuser)
-echo "Initializing Django..."
-python3 init_django.py || echo "Django initialization failed - will try in container"
+# Pull the latest image from Docker Hub
+echo "Pulling latest Django image from Docker Hub..."
+docker pull jamesrule4/django-app:latest
 
-# Build and start the container 
-docker-compose up -d --build
+# Start the container using docker-compose
+echo "Starting Django container..."
+docker-compose up -d
 
 # Wait for container to be ready
+echo "Waiting for container to start..."
 sleep 15
 
 # Check container status
+echo "Container status:"
 docker-compose ps
+
 echo "Container logs:"
 docker-compose logs --tail=20
 
