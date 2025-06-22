@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   django:
-    build: .
+    image: jamesrule4/django-app:latest
     container_name: rule4-django-minimal
     ports:
       - "8000:8000"

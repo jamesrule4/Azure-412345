@@ -69,6 +69,19 @@ resource "azurerm_network_security_group" "main" {
     destination_address_prefix = "10.${var.environment_number}.1.11"
   }
 
+  # Allow Django App port 8000 to Django VM
+  security_rule {
+    name                       = "AllowDjangoAppToDjangoVM"
+    priority                   = 160
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range         = "*"
+    destination_port_range    = "8000"
+    source_address_prefixes   = [var.admin_ip_address]
+    destination_address_prefix = "10.${var.environment_number}.1.11"
+  }
+
   # Allow LDAP between VMs
   security_rule {
     name                       = "AllowLDAP"
